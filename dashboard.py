@@ -156,6 +156,11 @@ def load_wedding_data(guest_file=None, england_scotland_file=None, france_file=N
     all_venues = pd.concat([england_venues, france_venues], ignore_index=True) if not england_venues.empty or not france_venues.empty else pd.DataFrame()
     
     if not all_venues.empty:
+        # Clean Venue column: strip whitespace and handle NaN
+        if 'Venue' in all_venues.columns:
+            all_venues['Venue'] = all_venues['Venue'].astype(str).str.strip()
+            # Remove rows with empty or 'nan' venue names
+            all_venues = all_venues[all_venues['Venue'].notna() & (all_venues['Venue'] != '') & (all_venues['Venue'] != 'nan')]
         # Clean capacity columns - extract numeric values
         def extract_capacity(val):
             if pd.isna(val):
@@ -537,13 +542,23 @@ with tab1:
         st.markdown("---")
         st.subheader("💰 Venue Cost Calculator")
         
-        if not filtered_venues.empty and 'Venue' in filtered_venues.columns:
+        # Use all_venues for dropdown (unfiltered), not filtered_venues
+        if not all_venues.empty and 'Venue' in all_venues.columns:
+            # Get unique venue names from all venues (defensive: dropna, remove empty strings)
+            all_venue_names = all_venues['Venue'].dropna().unique().tolist()
+            all_venue_names = [v for v in all_venue_names if v and str(v).strip()]
+            
+            # Show warning if filters are hiding venues from analysis
+            num_filtered = len(filtered_venues) if not filtered_venues.empty else 0
+            if num_filtered < len(all_venues):
+                st.info(f"ℹ️ Showing {num_filtered} of {len(all_venues)} venues in analysis above. Adjust filters to see more. All venues available in calculator below.")
+            
             col1, col2, col3 = st.columns(3)
             
             with col1:
                 selected_venue = st.selectbox(
                     "Select Venue",
-                    options=filtered_venues['Venue'].tolist()
+                    options=all_venue_names
                 )
             
             with col2:
@@ -554,24 +569,29 @@ with tab1:
                     value=150
                 )
             
-            if selected_venue and 'Base Price (£)' in filtered_venues.columns and 'Price per Guest (£)' in filtered_venues.columns:
-                venue_data = filtered_venues[filtered_venues['Venue'] == selected_venue].iloc[0]
-                base_price = venue_data['Base Price (£)']
-                per_guest = venue_data['Price per Guest (£)']
-                total_cost = base_price + (guest_count * per_guest)
-                
-                with col3:
-                    st.metric("Estimated Total Cost", f"£{total_cost:,.0f}")
-                
-                # Cost breakdown
-                st.markdown("**Cost Breakdown:**")
-                breakdown_df = pd.DataFrame({
-                    'Item': ['Base Venue Fee', 'Per Guest Cost', 'Total'],
-                    'Cost': [f"£{base_price:,.0f}", 
-                            f"£{guest_count * per_guest:,.0f} ({guest_count} × £{per_guest:.0f})",
-                            f"£{total_cost:,.0f}"]
-                })
-                st.table(breakdown_df)
+            # Look up venue data from all_venues (not filtered)
+            if selected_venue and 'Base Price (£)' in all_venues.columns and 'Price per Guest (£)' in all_venues.columns:
+                venue_matches = all_venues[all_venues['Venue'] == selected_venue]
+                if not venue_matches.empty:
+                    venue_data = venue_matches.iloc[0]
+                    base_price = venue_data['Base Price (£)']
+                    per_guest = venue_data['Price per Guest (£)']
+                    total_cost = base_price + (guest_count * per_guest)
+                    
+                    with col3:
+                        st.metric("Estimated Total Cost", f"£{total_cost:,.0f}")
+                    
+                    # Cost breakdown
+                    st.markdown("**Cost Breakdown:**")
+                    breakdown_df = pd.DataFrame({
+                        'Item': ['Base Venue Fee', 'Per Guest Cost', 'Total'],
+                        'Cost': [f"£{base_price:,.0f}", 
+                                f"£{guest_count * per_guest:,.0f} ({guest_count} × £{per_guest:.0f})",
+                                f"£{total_cost:,.0f}"]
+                    })
+                    st.table(breakdown_df)
+                else:
+                    st.warning("⚠️ Selected venue not found in data.")
             elif selected_venue:
                 st.info("Add 'Base Price (£)' and 'Price per Guest (£)' columns to your venue data for cost calculations.")
         else:
