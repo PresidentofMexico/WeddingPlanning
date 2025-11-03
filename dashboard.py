@@ -158,9 +158,10 @@ def load_wedding_data(guest_file=None, england_scotland_file=None, france_file=N
     if not all_venues.empty:
         # Clean Venue column: strip whitespace and handle NaN
         if 'Venue' in all_venues.columns:
-            all_venues['Venue'] = all_venues['Venue'].astype(str).str.strip()
-            # Remove rows with empty or 'nan' venue names
-            all_venues = all_venues[all_venues['Venue'].notna() & (all_venues['Venue'] != '') & (all_venues['Venue'] != 'nan')]
+            # Fill NaN with empty string, then strip whitespace
+            all_venues['Venue'] = all_venues['Venue'].fillna('').astype(str).str.strip()
+            # Remove rows with empty venue names
+            all_venues = all_venues[all_venues['Venue'] != '']
         # Clean capacity columns - extract numeric values
         def extract_capacity(val):
             if pd.isna(val):
@@ -544,9 +545,8 @@ with tab1:
         
         # Use all_venues for dropdown (unfiltered), not filtered_venues
         if not all_venues.empty and 'Venue' in all_venues.columns:
-            # Get unique venue names from all venues (defensive: dropna, remove empty strings)
-            all_venue_names = all_venues['Venue'].dropna().unique().tolist()
-            all_venue_names = [v for v in all_venue_names if v and str(v).strip()]
+            # Get unique venue names from all venues (already cleaned in load_wedding_data)
+            all_venue_names = all_venues['Venue'].unique().tolist()
             
             # Show warning if filters are hiding venues from analysis
             num_filtered = len(filtered_venues) if not filtered_venues.empty else 0
