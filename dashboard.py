@@ -6,6 +6,8 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import json
 import random
+import re
+import os
 from datetime import datetime
 
 # Configure page
@@ -36,7 +38,6 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Data directory for storing uploaded files
-import os
 DATA_DIR = os.path.join(os.path.dirname(__file__), 'data')
 os.makedirs(DATA_DIR, exist_ok=True)
 
@@ -112,7 +113,6 @@ def load_wedding_data(guest_file=None, england_scotland_file=None, france_file=N
                 return None
             val = str(val)
             # Extract first number found
-            import re
             numbers = re.findall(r'\d+', val)
             return int(numbers[0]) if numbers else None
         
@@ -128,12 +128,12 @@ def load_wedding_data(guest_file=None, england_scotland_file=None, france_file=N
             all_venues['Reception Capacity'] = None
         
         # Add estimated price ranges if not present
-        if 'Base Price (£)' not in all_venues.columns:
+        if 'Base Price (£)' not in all_venues.columns or 'Price per Guest (£)' not in all_venues.columns:
             np.random.seed(42)
-            all_venues['Base Price (£)'] = np.random.uniform(15000, 85000, len(all_venues))
-        if 'Price per Guest (£)' not in all_venues.columns:
-            np.random.seed(42)
-            all_venues['Price per Guest (£)'] = np.random.uniform(150, 450, len(all_venues))
+            if 'Base Price (£)' not in all_venues.columns:
+                all_venues['Base Price (£)'] = np.random.uniform(15000, 85000, len(all_venues))
+            if 'Price per Guest (£)' not in all_venues.columns:
+                all_venues['Price per Guest (£)'] = np.random.uniform(150, 450, len(all_venues))
     
     # Process master list
     if not master_list.empty and all(col in master_list.columns for col in ['Engagement Party', 'Maryland Celebration', 'Wedding']):
@@ -193,14 +193,22 @@ with st.sidebar:
         )
         
         if guest_upload is not None:
-            # Save uploaded file
-            guest_file_path = os.path.join(DATA_DIR, 'uploaded_guest_list.csv')
-            with open(guest_file_path, 'wb') as f:
-                f.write(guest_upload.getbuffer())
-            st.session_state.guest_file_path = guest_file_path
-            st.success("✓ Guest list uploaded!")
-            st.cache_data.clear()
-            st.rerun()
+            # Validate file size (Streamlit already enforces 200MB limit)
+            file_size = guest_upload.size
+            if file_size > 200 * 1024 * 1024:  # 200MB
+                st.error("File too large. Maximum size is 200MB.")
+            else:
+                try:
+                    # Save uploaded file with sanitized name
+                    guest_file_path = os.path.join(DATA_DIR, 'uploaded_guest_list.csv')
+                    with open(guest_file_path, 'wb') as f:
+                        f.write(guest_upload.getbuffer())
+                    st.session_state.guest_file_path = guest_file_path
+                    st.success("✓ Guest list uploaded!")
+                    st.cache_data.clear()
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error uploading file: {str(e)}")
         
         # England/Scotland venues upload
         england_upload = st.file_uploader(
@@ -211,14 +219,17 @@ with st.sidebar:
         )
         
         if england_upload is not None:
-            # Save uploaded file
-            england_file_path = os.path.join(DATA_DIR, 'uploaded_england_scotland.csv')
-            with open(england_file_path, 'wb') as f:
-                f.write(england_upload.getbuffer())
-            st.session_state.england_scotland_file_path = england_file_path
-            st.success("✓ England/Scotland venues uploaded!")
-            st.cache_data.clear()
-            st.rerun()
+            try:
+                # Save uploaded file with sanitized name
+                england_file_path = os.path.join(DATA_DIR, 'uploaded_england_scotland.csv')
+                with open(england_file_path, 'wb') as f:
+                    f.write(england_upload.getbuffer())
+                st.session_state.england_scotland_file_path = england_file_path
+                st.success("✓ England/Scotland venues uploaded!")
+                st.cache_data.clear()
+                st.rerun()
+            except Exception as e:
+                st.error(f"Error uploading file: {str(e)}")
         
         # France venues upload
         france_upload = st.file_uploader(
@@ -229,12 +240,17 @@ with st.sidebar:
         )
         
         if france_upload is not None:
-            # Save uploaded file
-            france_file_path = os.path.join(DATA_DIR, 'uploaded_france.csv')
-            with open(france_file_path, 'wb') as f:
-                f.write(france_upload.getbuffer())
-            st.session_state.france_file_path = france_file_path
-            st.success("✓ France venues uploaded!")
+            try:
+                # Save uploaded file with sanitized name
+                france_file_path = os.path.join(DATA_DIR, 'uploaded_france.csv')
+                with open(france_file_path, 'wb') as f:
+                    f.write(france_upload.getbuffer())
+                st.session_state.france_file_path = france_file_path
+                st.success("✓ France venues uploaded!")
+                st.cache_data.clear()
+                st.rerun()
+            except Exception as e:
+                st.error(f"Error uploading file: {str(e)}")
             st.cache_data.clear()
             st.rerun()
         
