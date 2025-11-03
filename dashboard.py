@@ -85,22 +85,27 @@ def clean_guest_list(df):
     cleaned_df = cleaned_df.dropna(subset=['Name'])
     
     # Remove summary/header rows by checking if Name contains known summary keywords
-    summary_keywords = ['EVENT SUMMARY', 'CATEGORY BREAKDOWN', 'Event', 'Category']
+    # Using specific keywords to avoid accidentally filtering legitimate guest names
+    summary_keywords = ['EVENT SUMMARY', 'CATEGORY BREAKDOWN']
     cleaned_df = cleaned_df[~cleaned_df['Name'].isin(summary_keywords)]
     
     # Remove rows where event columns contain non-binary values
-    # First, check if event columns exist
+    # Check if event columns exist
     event_cols = ['Engagement Party', 'Maryland Celebration', 'Wedding']
     available_event_cols = [col for col in event_cols if col in cleaned_df.columns]
     
     if available_event_cols:
-        # Filter out rows where any event column contains values that aren't '0', '1', 0, or 1
+        # Create a combined mask for all event columns to filter efficiently
+        mask = pd.Series([True] * len(cleaned_df), index=cleaned_df.index)
+        
         for col in available_event_cols:
-            # Convert to string for comparison, then filter
-            cleaned_df[col] = cleaned_df[col].astype(str)
-            # Keep only rows where the value is '0', '1', '0.0', '1.0', or nan (will be converted later)
+            # Convert to string for comparison
+            col_str = cleaned_df[col].astype(str)
+            # Keep only rows where the value is '0', '1', '0.0', '1.0', or 'nan'
             valid_values = ['0', '1', '0.0', '1.0', 'nan']
-            cleaned_df = cleaned_df[cleaned_df[col].isin(valid_values)]
+            mask &= col_str.isin(valid_values)
+        
+        cleaned_df = cleaned_df[mask]
     
     # Remove any duplicate guest names (keep first occurrence)
     if 'Name' in cleaned_df.columns:
