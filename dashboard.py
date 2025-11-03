@@ -35,48 +35,121 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Load data
+# Data directory for storing uploaded files
+import os
+DATA_DIR = os.path.join(os.path.dirname(__file__), 'data')
+os.makedirs(DATA_DIR, exist_ok=True)
+
+# Default data files (from repo root)
+DEFAULT_GUEST_FILE = 'wedding_roster_csv.csv'
+DEFAULT_ENGLAND_SCOTLAND_FILE = 'englandscotland_csv.csv'
+DEFAULT_FRANCE_FILE = 'france_csv.csv'
+
+def load_csv_or_excel(file_path, sheet_name=None):
+    """Load data from CSV or Excel file."""
+    try:
+        if file_path.endswith('.csv'):
+            return pd.read_csv(file_path)
+        elif file_path.endswith(('.xlsx', '.xls')):
+            if sheet_name:
+                return pd.read_excel(file_path, sheet_name=sheet_name)
+            else:
+                return pd.read_excel(file_path)
+        else:
+            st.error(f"Unsupported file format: {file_path}")
+            return None
+    except Exception as e:
+        st.error(f"Error loading {file_path}: {str(e)}")
+        return None
+
 @st.cache_data
-def load_wedding_data():
-    file_path = '/mnt/user-data/uploads/Wedding_Planning.xlsx'
+def load_wedding_data(guest_file=None, england_scotland_file=None, france_file=None):
+    """Load wedding data from CSV or Excel files."""
     
-    # Load all sheets
-    master_list = pd.read_excel(file_path, sheet_name='Master Invite List')
-    england_venues = pd.read_excel(file_path, sheet_name='England and Scotland')
-    france_venues = pd.read_excel(file_path, sheet_name='France')
+    # Use provided files or defaults
+    guest_path = guest_file or DEFAULT_GUEST_FILE
+    england_scotland_path = england_scotland_file or DEFAULT_ENGLAND_SCOTLAND_FILE
+    france_path = france_file or DEFAULT_FRANCE_FILE
+    
+    # Load guest list
+    master_list = load_csv_or_excel(guest_path)
+    if master_list is None:
+        st.error("Failed to load guest list. Using empty dataframe.")
+        master_list = pd.DataFrame()
+    
+    # Load venue data
+    england_venues = load_csv_or_excel(england_scotland_path)
+    france_venues = load_csv_or_excel(france_path)
+    
+    if england_venues is None:
+        england_venues = pd.DataFrame()
+    if france_venues is None:
+        france_venues = pd.DataFrame()
     
     # Clean up venue data
-    england_venues['Country'] = england_venues['Region/Country'].apply(lambda x: 'England' if 'England' in str(x) else 'Scotland')
-    france_venues['Country'] = 'France'
+    if not england_venues.empty and 'Region/Country' in england_venues.columns:
+        england_venues['Country'] = england_venues['Region/Country'].apply(lambda x: 'England' if 'England' in str(x) else 'Scotland')
+    elif not england_venues.empty:
+        england_venues['Country'] = 'England'
+    
+    if not france_venues.empty:
+        france_venues['Country'] = 'France'
     
     # Combine venue data
-    all_venues = pd.concat([england_venues, france_venues], ignore_index=True)
+    all_venues = pd.concat([england_venues, france_venues], ignore_index=True) if not england_venues.empty or not france_venues.empty else pd.DataFrame()
     
-    # Clean capacity columns - extract numeric values
-    def extract_capacity(val):
-        if pd.isna(val):
-            return None
-        val = str(val)
-        # Extract first number found
-        import re
-        numbers = re.findall(r'\d+', val)
-        return int(numbers[0]) if numbers else None
-    
-    all_venues['Seated Capacity'] = all_venues['Seated Dinner Capacity'].apply(extract_capacity)
-    all_venues['Reception Capacity'] = all_venues['Evening/Reception Capacity'].apply(extract_capacity)
-    
-    # Add estimated price ranges (since not in data, we'll create estimates based on venue characteristics)
-    np.random.seed(42)
-    all_venues['Base Price (£)'] = np.random.uniform(15000, 85000, len(all_venues))
-    all_venues['Price per Guest (£)'] = np.random.uniform(150, 450, len(all_venues))
+    if not all_venues.empty:
+        # Clean capacity columns - extract numeric values
+        def extract_capacity(val):
+            if pd.isna(val):
+                return None
+            val = str(val)
+            # Extract first number found
+            import re
+            numbers = re.findall(r'\d+', val)
+            return int(numbers[0]) if numbers else None
+        
+        # Handle different column names
+        if 'Seated Dinner Capacity' in all_venues.columns:
+            all_venues['Seated Capacity'] = all_venues['Seated Dinner Capacity'].apply(extract_capacity)
+        elif 'Seated Capacity' not in all_venues.columns:
+            all_venues['Seated Capacity'] = None
+            
+        if 'Evening/Reception Capacity' in all_venues.columns:
+            all_venues['Reception Capacity'] = all_venues['Evening/Reception Capacity'].apply(extract_capacity)
+        elif 'Reception Capacity' not in all_venues.columns:
+            all_venues['Reception Capacity'] = None
+        
+        # Add estimated price ranges if not present
+        if 'Base Price (£)' not in all_venues.columns:
+            np.random.seed(42)
+            all_venues['Base Price (£)'] = np.random.uniform(15000, 85000, len(all_venues))
+        if 'Price per Guest (£)' not in all_venues.columns:
+            np.random.seed(42)
+            all_venues['Price per Guest (£)'] = np.random.uniform(150, 450, len(all_venues))
     
     # Process master list
-    master_list['Total Events'] = master_list[['Engagement Party', 'Maryland Celebration', 'Wedding']].sum(axis=1)
+    if not master_list.empty and all(col in master_list.columns for col in ['Engagement Party', 'Maryland Celebration', 'Wedding']):
+        master_list['Total Events'] = master_list[['Engagement Party', 'Maryland Celebration', 'Wedding']].sum(axis=1)
+    elif not master_list.empty and 'Total Events' not in master_list.columns:
+        master_list['Total Events'] = 0
     
     return master_list, all_venues, england_venues, france_venues
 
-# Load data
-guest_list, all_venues, england_venues, france_venues = load_wedding_data()
+# Initialize session state for uploaded files
+if 'guest_file_path' not in st.session_state:
+    st.session_state.guest_file_path = None
+if 'england_scotland_file_path' not in st.session_state:
+    st.session_state.england_scotland_file_path = None
+if 'france_file_path' not in st.session_state:
+    st.session_state.france_file_path = None
+
+# Load data with session state paths
+guest_list, all_venues, england_venues, france_venues = load_wedding_data(
+    st.session_state.guest_file_path,
+    st.session_state.england_scotland_file_path,
+    st.session_state.france_file_path
+)
 
 # Initialize session state for table arrangements
 if 'table_assignments' not in st.session_state:
@@ -95,6 +168,82 @@ st.markdown("---")
 with st.sidebar:
     st.header("⚙️ Dashboard Controls")
     
+    # File upload section
+    st.subheader("📂 Data Files")
+    
+    with st.expander("Upload CSV Files", expanded=False):
+        st.markdown("Upload your own CSV files to replace the default data.")
+        
+        # Guest list upload
+        guest_upload = st.file_uploader(
+            "Guest List CSV",
+            type=['csv'],
+            key='guest_uploader',
+            help="CSV file with columns: Name, Engagement Party, Maryland Celebration, Wedding, Category, Source"
+        )
+        
+        if guest_upload is not None:
+            # Save uploaded file
+            guest_file_path = os.path.join(DATA_DIR, 'uploaded_guest_list.csv')
+            with open(guest_file_path, 'wb') as f:
+                f.write(guest_upload.getbuffer())
+            st.session_state.guest_file_path = guest_file_path
+            st.success("✓ Guest list uploaded!")
+            st.cache_data.clear()
+            st.rerun()
+        
+        # England/Scotland venues upload
+        england_upload = st.file_uploader(
+            "England/Scotland Venues CSV",
+            type=['csv'],
+            key='england_uploader',
+            help="CSV file with venue information for England and Scotland"
+        )
+        
+        if england_upload is not None:
+            # Save uploaded file
+            england_file_path = os.path.join(DATA_DIR, 'uploaded_england_scotland.csv')
+            with open(england_file_path, 'wb') as f:
+                f.write(england_upload.getbuffer())
+            st.session_state.england_scotland_file_path = england_file_path
+            st.success("✓ England/Scotland venues uploaded!")
+            st.cache_data.clear()
+            st.rerun()
+        
+        # France venues upload
+        france_upload = st.file_uploader(
+            "France Venues CSV",
+            type=['csv'],
+            key='france_uploader',
+            help="CSV file with venue information for France"
+        )
+        
+        if france_upload is not None:
+            # Save uploaded file
+            france_file_path = os.path.join(DATA_DIR, 'uploaded_france.csv')
+            with open(france_file_path, 'wb') as f:
+                f.write(france_upload.getbuffer())
+            st.session_state.france_file_path = france_file_path
+            st.success("✓ France venues uploaded!")
+            st.cache_data.clear()
+            st.rerun()
+        
+        # Reset to defaults
+        if st.button("🔄 Reset to Default Files"):
+            st.session_state.guest_file_path = None
+            st.session_state.england_scotland_file_path = None
+            st.session_state.france_file_path = None
+            st.cache_data.clear()
+            st.rerun()
+        
+        # Show current data source
+        st.markdown("**Current Data Sources:**")
+        st.markdown(f"- Guest List: `{st.session_state.guest_file_path or DEFAULT_GUEST_FILE}`")
+        st.markdown(f"- England/Scotland: `{st.session_state.england_scotland_file_path or DEFAULT_ENGLAND_SCOTLAND_FILE}`")
+        st.markdown(f"- France: `{st.session_state.france_file_path or DEFAULT_FRANCE_FILE}`")
+    
+    st.markdown("---")
+    
     # Guest count filter
     st.subheader("Guest Filters")
     event_filter = st.selectbox(
@@ -102,21 +251,29 @@ with st.sidebar:
         ["All Events", "Wedding", "Engagement Party", "Maryland Celebration"]
     )
     
-    category_filter = st.multiselect(
-        "Filter by Category",
-        options=guest_list['Category'].unique().tolist(),
-        default=guest_list['Category'].unique().tolist()
-    )
+    if not guest_list.empty and 'Category' in guest_list.columns:
+        category_filter = st.multiselect(
+            "Filter by Category",
+            options=guest_list['Category'].unique().tolist(),
+            default=guest_list['Category'].unique().tolist()
+        )
+    else:
+        category_filter = []
     
     st.markdown("---")
     
     # Venue filters
     st.subheader("Venue Filters")
-    country_filter = st.multiselect(
-        "Select Countries",
-        options=['England', 'Scotland', 'France'],
-        default=['England', 'Scotland', 'France']
-    )
+    
+    if not all_venues.empty and 'Country' in all_venues.columns:
+        available_countries = all_venues['Country'].unique().tolist()
+        country_filter = st.multiselect(
+            "Select Countries",
+            options=available_countries,
+            default=available_countries
+        )
+    else:
+        country_filter = []
     
     capacity_range = st.slider(
         "Seated Capacity Range",
@@ -140,58 +297,92 @@ tab1, tab2, tab3, tab4 = st.tabs(["📊 Venue Comparison", "👥 Guest Managemen
 with tab1:
     st.header("Venue Comparison & Analysis")
     
-    # Filter venues
-    filtered_venues = all_venues[all_venues['Country'].isin(country_filter)].copy()
-    filtered_venues = filtered_venues[
-        (filtered_venues['Seated Capacity'].between(capacity_range[0], capacity_range[1], inclusive='both')) |
-        (filtered_venues['Seated Capacity'].isna())
-    ]
-    filtered_venues = filtered_venues[
-        filtered_venues['Base Price (£)'].between(price_range[0], price_range[1])
-    ]
-    
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        st.metric("Total Venues", len(filtered_venues))
-    with col2:
-        avg_price = filtered_venues['Base Price (£)'].mean()
-        st.metric("Average Base Price", f"£{avg_price:,.0f}")
-    with col3:
-        avg_capacity = filtered_venues['Seated Capacity'].mean()
-        st.metric("Avg Seated Capacity", f"{avg_capacity:.0f}" if not pd.isna(avg_capacity) else "N/A")
-    
-    st.markdown("---")
-    
-    # Venue comparison chart
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        # Price vs Capacity scatter plot
-        fig_scatter = px.scatter(
-            filtered_venues,
-            x='Seated Capacity',
-            y='Base Price (£)',
-            color='Country',
-            size='Price per Guest (£)',
-            hover_data=['Venue', 'Style', 'Exclusive Use?'],
-            title='Price vs Capacity Analysis',
-            labels={'Base Price (£)': 'Base Price (£)', 'Seated Capacity': 'Seated Capacity'}
+    if all_venues.empty:
+        st.warning("⚠️ No venue data loaded. Please upload venue CSV files using the sidebar.")
+        st.info(
+            "Expected CSV format:\n\n"
+            "- **Venue**: Name of the venue\n"
+            "- **Region/Country**: Location information\n"
+            "- **Style**: Venue style/type\n"
+            "- **Seated Dinner Capacity**: Capacity for seated dinner\n"
+            "- **Evening/Reception Capacity**: Capacity for reception\n"
+            "- **Exclusive Use?**: Whether exclusive use is available\n"
+            "- **Bedrooms Onsite**: Number of bedrooms\n"
+            "- **Nearest Airports**: Nearby airports\n\n"
+            "You can also add columns like 'Base Price (£)' and 'Price per Guest (£)' for pricing information."
         )
-        fig_scatter.update_layout(height=400)
-        st.plotly_chart(fig_scatter, use_container_width=True)
-    
-    with col2:
-        # Price distribution by country
-        fig_box = px.box(
-            filtered_venues,
-            x='Country',
-            y='Base Price (£)',
-            color='Country',
-            title='Price Distribution by Country'
-        )
-        fig_box.update_layout(height=400, showlegend=False)
-        st.plotly_chart(fig_box, use_container_width=True)
+    else:
+        # Filter venues
+        filtered_venues = all_venues[all_venues['Country'].isin(country_filter)].copy()
+        
+        if 'Seated Capacity' in filtered_venues.columns:
+            filtered_venues = filtered_venues[
+                (filtered_venues['Seated Capacity'].between(capacity_range[0], capacity_range[1], inclusive='both')) |
+                (filtered_venues['Seated Capacity'].isna())
+            ]
+        
+        if 'Base Price (£)' in filtered_venues.columns:
+            filtered_venues = filtered_venues[
+                filtered_venues['Base Price (£)'].between(price_range[0], price_range[1])
+            ]
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.metric("Total Venues", len(filtered_venues))
+        with col2:
+            if 'Base Price (£)' in filtered_venues.columns:
+                avg_price = filtered_venues['Base Price (£)'].mean()
+                st.metric("Average Base Price", f"£{avg_price:,.0f}" if not pd.isna(avg_price) else "N/A")
+            else:
+                st.metric("Average Base Price", "N/A")
+        with col3:
+            if 'Seated Capacity' in filtered_venues.columns:
+                avg_capacity = filtered_venues['Seated Capacity'].mean()
+                st.metric("Avg Seated Capacity", f"{avg_capacity:.0f}" if not pd.isna(avg_capacity) else "N/A")
+            else:
+                st.metric("Avg Seated Capacity", "N/A")
+        
+        st.markdown("---")
+        
+        # Venue comparison chart
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            # Price vs Capacity scatter plot
+            if not filtered_venues.empty and 'Seated Capacity' in filtered_venues.columns and 'Base Price (£)' in filtered_venues.columns:
+                hover_cols = ['Venue', 'Style', 'Exclusive Use?']
+                hover_data = {col: True for col in hover_cols if col in filtered_venues.columns}
+                
+                fig_scatter = px.scatter(
+                    filtered_venues,
+                    x='Seated Capacity',
+                    y='Base Price (£)',
+                    color='Country',
+                    size='Price per Guest (£)' if 'Price per Guest (£)' in filtered_venues.columns else None,
+                    hover_data=hover_data,
+                    title='Price vs Capacity Analysis',
+                    labels={'Base Price (£)': 'Base Price (£)', 'Seated Capacity': 'Seated Capacity'}
+                )
+                fig_scatter.update_layout(height=400)
+                st.plotly_chart(fig_scatter, use_container_width=True)
+            else:
+                st.info("Add 'Seated Capacity' and 'Base Price (£)' columns to your data for price vs capacity analysis.")
+        
+        with col2:
+            # Price distribution by country
+            if not filtered_venues.empty and 'Base Price (£)' in filtered_venues.columns:
+                fig_box = px.box(
+                    filtered_venues,
+                    x='Country',
+                    y='Base Price (£)',
+                    color='Country',
+                    title='Price Distribution by Country'
+                )
+                fig_box.update_layout(height=400, showlegend=False)
+                st.plotly_chart(fig_box, use_container_width=True)
+            else:
+                st.info("Add 'Base Price (£)' column to your data for price distribution analysis.")
     
     # Detailed venue table
     st.subheader("Detailed Venue Information")
@@ -201,9 +392,16 @@ with tab1:
                    'Base Price (£)', 'Price per Guest (£)', 'Exclusive Use?', 
                    'Bedrooms Onsite', 'Nearest Airports']
     
+    # Filter to only columns that exist
+    display_cols = [col for col in display_cols if col in filtered_venues.columns]
+    
     venue_display = filtered_venues[display_cols].copy()
-    venue_display['Base Price (£)'] = venue_display['Base Price (£)'].apply(lambda x: f"£{x:,.0f}")
-    venue_display['Price per Guest (£)'] = venue_display['Price per Guest (£)'].apply(lambda x: f"£{x:.0f}")
+    
+    # Format price columns if they exist
+    if 'Base Price (£)' in venue_display.columns:
+        venue_display['Base Price (£)'] = venue_display['Base Price (£)'].apply(lambda x: f"£{x:,.0f}" if pd.notna(x) else "N/A")
+    if 'Price per Guest (£)' in venue_display.columns:
+        venue_display['Price per Guest (£)'] = venue_display['Price per Guest (£)'].apply(lambda x: f"£{x:.0f}" if pd.notna(x) else "N/A")
     
     st.dataframe(
         venue_display,
@@ -212,145 +410,249 @@ with tab1:
         hide_index=True
     )
     
-    # Venue cost calculator
+    # Download venue data
     st.markdown("---")
-    st.subheader("💰 Venue Cost Calculator")
+    st.subheader("💾 Export Venue Data")
     
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        selected_venue = st.selectbox(
-            "Select Venue",
-            options=filtered_venues['Venue'].tolist()
+        # Download filtered venues
+        filtered_csv = filtered_venues.to_csv(index=False)
+        st.download_button(
+            label="📥 Download Filtered Venues",
+            data=filtered_csv,
+            file_name=f"filtered_venues_{datetime.now().strftime('%Y%m%d')}.csv",
+            mime='text/csv',
+            help="Download currently filtered venues"
         )
     
     with col2:
-        guest_count = st.number_input(
-            "Number of Guests",
-            min_value=1,
-            max_value=300,
-            value=150
-        )
+        # Download England/Scotland venues
+        if not england_venues.empty:
+            england_csv = england_venues.to_csv(index=False)
+            st.download_button(
+                label="📥 England/Scotland Venues",
+                data=england_csv,
+                file_name="englandscotland_csv.csv",
+                mime='text/csv',
+                help="Download to replace englandscotland_csv.csv in repo"
+            )
     
-    if selected_venue:
-        venue_data = filtered_venues[filtered_venues['Venue'] == selected_venue].iloc[0]
-        base_price = venue_data['Base Price (£)']
-        per_guest = venue_data['Price per Guest (£)']
-        total_cost = base_price + (guest_count * per_guest)
+    with col3:
+        # Download France venues
+        if not france_venues.empty:
+            france_csv = france_venues.to_csv(index=False)
+            st.download_button(
+                label="📥 France Venues",
+                data=france_csv,
+                file_name="france_csv.csv",
+                mime='text/csv',
+                help="Download to replace france_csv.csv in repo"
+            )
+    
+    st.info(
+        "💡 **Tip:** To permanently update venue data:\n"
+        "1. Click the respective download button\n"
+        "2. Replace the corresponding CSV file in your local repo\n"
+        "3. Commit and push the changes to GitHub"
+    )
         
-        with col3:
-            st.metric("Estimated Total Cost", f"£{total_cost:,.0f}")
+        # Venue cost calculator
+        st.markdown("---")
+        st.subheader("💰 Venue Cost Calculator")
         
-        # Cost breakdown
-        st.markdown("**Cost Breakdown:**")
-        breakdown_df = pd.DataFrame({
-            'Item': ['Base Venue Fee', 'Per Guest Cost', 'Total'],
-            'Cost': [f"£{base_price:,.0f}", 
-                    f"£{guest_count * per_guest:,.0f} ({guest_count} × £{per_guest:.0f})",
-                    f"£{total_cost:,.0f}"]
-        })
-        st.table(breakdown_df)
+        if not filtered_venues.empty and 'Venue' in filtered_venues.columns:
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                selected_venue = st.selectbox(
+                    "Select Venue",
+                    options=filtered_venues['Venue'].tolist()
+                )
+            
+            with col2:
+                guest_count = st.number_input(
+                    "Number of Guests",
+                    min_value=1,
+                    max_value=300,
+                    value=150
+                )
+            
+            if selected_venue and 'Base Price (£)' in filtered_venues.columns and 'Price per Guest (£)' in filtered_venues.columns:
+                venue_data = filtered_venues[filtered_venues['Venue'] == selected_venue].iloc[0]
+                base_price = venue_data['Base Price (£)']
+                per_guest = venue_data['Price per Guest (£)']
+                total_cost = base_price + (guest_count * per_guest)
+                
+                with col3:
+                    st.metric("Estimated Total Cost", f"£{total_cost:,.0f}")
+                
+                # Cost breakdown
+                st.markdown("**Cost Breakdown:**")
+                breakdown_df = pd.DataFrame({
+                    'Item': ['Base Venue Fee', 'Per Guest Cost', 'Total'],
+                    'Cost': [f"£{base_price:,.0f}", 
+                            f"£{guest_count * per_guest:,.0f} ({guest_count} × £{per_guest:.0f})",
+                            f"£{total_cost:,.0f}"]
+                })
+                st.table(breakdown_df)
+            elif selected_venue:
+                st.info("Add 'Base Price (£)' and 'Price per Guest (£)' columns to your venue data for cost calculations.")
+        else:
+            st.info("Upload venue data to use the cost calculator.")
 
 # Tab 2: Guest Management
 with tab2:
     st.header("Guest List Management")
     
-    # Apply filters
-    filtered_guests = guest_list[guest_list['Category'].isin(category_filter)].copy()
-    
-    if event_filter != "All Events":
-        filtered_guests = filtered_guests[filtered_guests[event_filter] == 1]
-    
-    # Guest metrics
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        total_guests = len(filtered_guests)
-        st.metric("Total Guests", total_guests)
-    
-    with col2:
-        wedding_count = filtered_guests['Wedding'].sum()
-        st.metric("Wedding Attendees", int(wedding_count))
-    
-    with col3:
-        engagement_count = filtered_guests['Engagement Party'].sum()
-        st.metric("Engagement Party", int(engagement_count))
-    
-    with col4:
-        maryland_count = filtered_guests['Maryland Celebration'].sum()
-        st.metric("Maryland Celebration", int(maryland_count))
-    
-    st.markdown("---")
-    
-    # Guest breakdown charts
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        # Category breakdown
-        category_counts = filtered_guests['Category'].value_counts()
-        fig_pie = px.pie(
-            values=category_counts.values,
-            names=category_counts.index,
-            title='Guest Distribution by Category'
+    if guest_list.empty:
+        st.warning("⚠️ No guest data loaded. Please upload a guest list CSV using the sidebar.")
+        st.info(
+            "Expected CSV format:\n\n"
+            "- **Name**: Guest name\n"
+            "- **Engagement Party**: 1 or 0 (attending or not)\n"
+            "- **Maryland Celebration**: 1 or 0 (attending or not)\n"
+            "- **Wedding**: 1 or 0 (attending or not)\n"
+            "- **Category**: Guest category (e.g., Family, Friends)\n"
+            "- **Source**: Source of invitation (e.g., John B, Darling)\n\n"
+            "Optional:\n"
+            "- **Total Events**: Will be calculated automatically if not provided"
         )
-        fig_pie.update_layout(height=350)
-        st.plotly_chart(fig_pie, use_container_width=True)
-    
-    with col2:
-        # Event attendance
-        event_data = pd.DataFrame({
-            'Event': ['Wedding', 'Engagement Party', 'Maryland Celebration'],
-            'Attendees': [
-                filtered_guests['Wedding'].sum(),
-                filtered_guests['Engagement Party'].sum(),
-                filtered_guests['Maryland Celebration'].sum()
+    else:
+        # Apply filters
+        filtered_guests = guest_list.copy()
+        
+        if 'Category' in guest_list.columns and category_filter:
+            filtered_guests = filtered_guests[filtered_guests['Category'].isin(category_filter)]
+        
+        if event_filter != "All Events" and event_filter in filtered_guests.columns:
+            filtered_guests = filtered_guests[filtered_guests[event_filter] == 1]
+        
+        # Guest metrics
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            total_guests = len(filtered_guests)
+            st.metric("Total Guests", total_guests)
+        
+        with col2:
+            wedding_count = filtered_guests['Wedding'].sum() if 'Wedding' in filtered_guests.columns else 0
+            st.metric("Wedding Attendees", int(wedding_count))
+        
+        with col3:
+            engagement_count = filtered_guests['Engagement Party'].sum() if 'Engagement Party' in filtered_guests.columns else 0
+            st.metric("Engagement Party", int(engagement_count))
+        
+        with col4:
+            maryland_count = filtered_guests['Maryland Celebration'].sum() if 'Maryland Celebration' in filtered_guests.columns else 0
+            st.metric("Maryland Celebration", int(maryland_count))
+        
+        st.markdown("---")
+        
+        # Guest breakdown charts
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            # Category breakdown
+            if 'Category' in filtered_guests.columns:
+                category_counts = filtered_guests['Category'].value_counts()
+                fig_pie = px.pie(
+                    values=category_counts.values,
+                    names=category_counts.index,
+                    title='Guest Distribution by Category'
+                )
+                fig_pie.update_layout(height=350)
+                st.plotly_chart(fig_pie, use_container_width=True)
+            else:
+                st.info("Add 'Category' column to your guest data for category analysis.")
+        
+        with col2:
+            # Event attendance
+            event_cols = ['Wedding', 'Engagement Party', 'Maryland Celebration']
+            available_events = [col for col in event_cols if col in filtered_guests.columns]
+            
+            if available_events:
+                event_data = pd.DataFrame({
+                    'Event': available_events,
+                    'Attendees': [filtered_guests[col].sum() for col in available_events]
+                })
+                fig_bar = px.bar(
+                    event_data,
+                    x='Event',
+                    y='Attendees',
+                    title='Attendance by Event',
+                    color='Event'
+                )
+                fig_bar.update_layout(height=350, showlegend=False)
+                st.plotly_chart(fig_bar, use_container_width=True)
+            else:
+                st.info("Add event columns (Wedding, Engagement Party, Maryland Celebration) for attendance analysis.")
+        
+        # Guest list table
+        st.subheader("Guest List Details")
+        
+        # Add search functionality
+        search_term = st.text_input("🔍 Search guests by name", "")
+        
+        if search_term and 'Name' in filtered_guests.columns:
+            filtered_guests = filtered_guests[
+                filtered_guests['Name'].str.contains(search_term, case=False, na=False)
             ]
-        })
-        fig_bar = px.bar(
-            event_data,
-            x='Event',
-            y='Attendees',
-            title='Attendance by Event',
-            color='Event'
+        
+        # Display guest list
+        base_cols = ['Name', 'Category', 'Source']
+        event_cols = ['Engagement Party', 'Maryland Celebration', 'Wedding', 'Total Events']
+        
+        display_cols = [col for col in base_cols + event_cols if col in filtered_guests.columns]
+        guest_display = filtered_guests[display_cols].copy()
+        
+        # Convert 1/0 to Yes/No for events
+        for col in ['Engagement Party', 'Maryland Celebration', 'Wedding']:
+            if col in guest_display.columns:
+                guest_display[col] = guest_display[col].apply(lambda x: '✓' if x == 1 else '')
+        
+        st.dataframe(
+            guest_display,
+            use_container_width=True,
+            height=400,
+            hide_index=True
         )
-        fig_bar.update_layout(height=350, showlegend=False)
-        st.plotly_chart(fig_bar, use_container_width=True)
-    
-    # Guest list table
-    st.subheader("Guest List Details")
-    
-    # Add search functionality
-    search_term = st.text_input("🔍 Search guests by name", "")
-    
-    if search_term:
-        filtered_guests = filtered_guests[
-            filtered_guests['Name'].str.contains(search_term, case=False, na=False)
-        ]
-    
-    # Display guest list
-    guest_display = filtered_guests[['Name', 'Category', 'Source', 'Engagement Party', 
-                                     'Maryland Celebration', 'Wedding', 'Total Events']].copy()
-    
-    # Convert 1/0 to Yes/No for events
-    event_cols = ['Engagement Party', 'Maryland Celebration', 'Wedding']
-    for col in event_cols:
-        guest_display[col] = guest_display[col].apply(lambda x: '✓' if x == 1 else '')
-    
-    st.dataframe(
-        guest_display,
-        use_container_width=True,
-        height=400,
-        hide_index=True
-    )
-    
-    # Download guest list
-    csv = filtered_guests.to_csv(index=False)
-    st.download_button(
-        label="📥 Download Guest List (CSV)",
-        data=csv,
-        file_name=f"guest_list_{datetime.now().strftime('%Y%m%d')}.csv",
-        mime='text/csv'
-    )
+        
+        # Download guest list
+        st.markdown("---")
+        st.subheader("💾 Export & Update Data")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            csv = filtered_guests.to_csv(index=False)
+            st.download_button(
+                label="📥 Download Filtered Guest List (CSV)",
+                data=csv,
+                file_name=f"guest_list_{datetime.now().strftime('%Y%m%d')}.csv",
+                mime='text/csv',
+                help="Download the currently filtered guest list"
+            )
+        
+        with col2:
+            # Download full guest list for updating repo
+            full_csv = guest_list.to_csv(index=False)
+            st.download_button(
+                label="📥 Download Full Guest List (CSV)",
+                data=full_csv,
+                file_name="wedding_roster_csv.csv",
+                mime='text/csv',
+                help="Download the complete guest list to replace wedding_roster_csv.csv in the repo"
+            )
+        
+        st.info(
+            "💡 **Tip:** To permanently update the guest list:\n"
+            "1. Click 'Download Full Guest List'\n"
+            "2. Replace the `wedding_roster_csv.csv` file in your local repo\n"
+            "3. Commit and push the changes to GitHub\n\n"
+            "Or use the file uploader above to test changes in this session."
+        )
 
 # Tab 3: Table Seating
 with tab3:
