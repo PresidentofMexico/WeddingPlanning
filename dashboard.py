@@ -130,6 +130,9 @@ def load_wedding_data(guest_file=None, england_scotland_file=None, france_file=N
     
     # Process master list
     if not master_list.empty and all(col in master_list.columns for col in ['Engagement Party', 'Maryland Celebration', 'Wedding']):
+        # Ensure event columns are numeric
+        for col in ['Engagement Party', 'Maryland Celebration', 'Wedding']:
+            master_list[col] = pd.to_numeric(master_list[col], errors='coerce').fillna(0).astype(int)
         master_list['Total Events'] = master_list[['Engagement Party', 'Maryland Celebration', 'Wedding']].sum(axis=1)
     elif not master_list.empty and 'Total Events' not in master_list.columns:
         master_list['Total Events'] = 0
@@ -383,80 +386,80 @@ with tab1:
                 st.plotly_chart(fig_box, use_container_width=True)
             else:
                 st.info("Add 'Base Price (£)' column to your data for price distribution analysis.")
-    
-    # Detailed venue table
-    st.subheader("Detailed Venue Information")
-    
-    # Prepare display columns
-    display_cols = ['Venue', 'Country', 'Style', 'Seated Capacity', 
-                   'Base Price (£)', 'Price per Guest (£)', 'Exclusive Use?', 
-                   'Bedrooms Onsite', 'Nearest Airports']
-    
-    # Filter to only columns that exist
-    display_cols = [col for col in display_cols if col in filtered_venues.columns]
-    
-    venue_display = filtered_venues[display_cols].copy()
-    
-    # Format price columns if they exist
-    if 'Base Price (£)' in venue_display.columns:
-        venue_display['Base Price (£)'] = venue_display['Base Price (£)'].apply(lambda x: f"£{x:,.0f}" if pd.notna(x) else "N/A")
-    if 'Price per Guest (£)' in venue_display.columns:
-        venue_display['Price per Guest (£)'] = venue_display['Price per Guest (£)'].apply(lambda x: f"£{x:.0f}" if pd.notna(x) else "N/A")
-    
-    st.dataframe(
-        venue_display,
-        use_container_width=True,
-        height=400,
-        hide_index=True
-    )
-    
-    # Download venue data
-    st.markdown("---")
-    st.subheader("💾 Export Venue Data")
-    
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        # Download filtered venues
-        filtered_csv = filtered_venues.to_csv(index=False)
-        st.download_button(
-            label="📥 Download Filtered Venues",
-            data=filtered_csv,
-            file_name=f"filtered_venues_{datetime.now().strftime('%Y%m%d')}.csv",
-            mime='text/csv',
-            help="Download currently filtered venues"
+        
+        # Detailed venue table
+        st.subheader("Detailed Venue Information")
+        
+        # Prepare display columns
+        display_cols = ['Venue', 'Country', 'Style', 'Seated Capacity', 
+                       'Base Price (£)', 'Price per Guest (£)', 'Exclusive Use?', 
+                       'Bedrooms Onsite', 'Nearest Airports']
+        
+        # Filter to only columns that exist
+        display_cols = [col for col in display_cols if col in filtered_venues.columns]
+        
+        venue_display = filtered_venues[display_cols].copy()
+        
+        # Format price columns if they exist
+        if 'Base Price (£)' in venue_display.columns:
+            venue_display['Base Price (£)'] = venue_display['Base Price (£)'].apply(lambda x: f"£{x:,.0f}" if pd.notna(x) else "N/A")
+        if 'Price per Guest (£)' in venue_display.columns:
+            venue_display['Price per Guest (£)'] = venue_display['Price per Guest (£)'].apply(lambda x: f"£{x:.0f}" if pd.notna(x) else "N/A")
+        
+        st.dataframe(
+            venue_display,
+            use_container_width=True,
+            height=400,
+            hide_index=True
         )
-    
-    with col2:
-        # Download England/Scotland venues
-        if not england_venues.empty:
-            england_csv = england_venues.to_csv(index=False)
+        
+        # Download venue data
+        st.markdown("---")
+        st.subheader("💾 Export Venue Data")
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            # Download filtered venues
+            filtered_csv = filtered_venues.to_csv(index=False)
             st.download_button(
-                label="📥 England/Scotland Venues",
-                data=england_csv,
-                file_name="englandscotland_csv.csv",
+                label="📥 Download Filtered Venues",
+                data=filtered_csv,
+                file_name=f"filtered_venues_{datetime.now().strftime('%Y%m%d')}.csv",
                 mime='text/csv',
-                help="Download to replace englandscotland_csv.csv in repo"
+                help="Download currently filtered venues"
             )
-    
-    with col3:
-        # Download France venues
-        if not france_venues.empty:
-            france_csv = france_venues.to_csv(index=False)
-            st.download_button(
-                label="📥 France Venues",
-                data=france_csv,
-                file_name="france_csv.csv",
-                mime='text/csv',
-                help="Download to replace france_csv.csv in repo"
-            )
-    
-    st.info(
-        "💡 **Tip:** To permanently update venue data:\n"
-        "1. Click the respective download button\n"
-        "2. Replace the corresponding CSV file in your local repo\n"
-        "3. Commit and push the changes to GitHub"
-    )
+        
+        with col2:
+            # Download England/Scotland venues
+            if not england_venues.empty:
+                england_csv = england_venues.to_csv(index=False)
+                st.download_button(
+                    label="📥 England/Scotland Venues",
+                    data=england_csv,
+                    file_name="englandscotland_csv.csv",
+                    mime='text/csv',
+                    help="Download to replace englandscotland_csv.csv in repo"
+                )
+        
+        with col3:
+            # Download France venues
+            if not france_venues.empty:
+                france_csv = france_venues.to_csv(index=False)
+                st.download_button(
+                    label="📥 France Venues",
+                    data=france_csv,
+                    file_name="france_csv.csv",
+                    mime='text/csv',
+                    help="Download to replace france_csv.csv in repo"
+                )
+        
+        st.info(
+            "💡 **Tip:** To permanently update venue data:\n"
+            "1. Click the respective download button\n"
+            "2. Replace the corresponding CSV file in your local repo\n"
+            "3. Commit and push the changes to GitHub"
+        )
         
         # Venue cost calculator
         st.markdown("---")
@@ -920,64 +923,86 @@ with tab4:
     st.markdown("---")
     st.subheader("🌍 Venue Country Comparison")
     
-    country_stats = all_venues.groupby('Country').agg({
-        'Venue': 'count',
-        'Base Price (£)': ['mean', 'min', 'max'],
-        'Seated Capacity': 'mean',
-        'Price per Guest (£)': 'mean'
-    }).round(0)
-    
-    country_stats.columns = ['Count', 'Avg Price', 'Min Price', 'Max Price', 'Avg Capacity', 'Avg Per Guest']
-    
-    st.dataframe(
-        country_stats,
-        use_container_width=True
-    )
+    if not all_venues.empty and 'Country' in all_venues.columns:
+        required_cols = ['Venue', 'Base Price (£)', 'Seated Capacity', 'Price per Guest (£)']
+        available_cols = {col: col for col in required_cols if col in all_venues.columns}
+        
+        if available_cols:
+            agg_dict = {}
+            if 'Venue' in available_cols:
+                agg_dict['Venue'] = 'count'
+            if 'Base Price (£)' in available_cols:
+                agg_dict['Base Price (£)'] = ['mean', 'min', 'max']
+            if 'Seated Capacity' in available_cols:
+                agg_dict['Seated Capacity'] = 'mean'
+            if 'Price per Guest (£)' in available_cols:
+                agg_dict['Price per Guest (£)'] = 'mean'
+            
+            country_stats = all_venues.groupby('Country').agg(agg_dict).round(0)
+            
+            # Flatten column names
+            country_stats.columns = ['_'.join(col).strip('_') if isinstance(col, tuple) else col for col in country_stats.columns]
+            
+            st.dataframe(
+                country_stats,
+                use_container_width=True
+            )
+        else:
+            st.info("Add venue data columns (Venue, Base Price, etc.) for country comparison.")
+    else:
+        st.info("Upload venue data with Country information for country comparison.")
     
     # Budget scenarios
     st.markdown("---")
     st.subheader("💰 Budget Scenarios")
     
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        scenario_guests = st.slider("Scenario Guest Count", 100, 250, 150, 10)
-    
-    with col2:
-        selected_countries = st.multiselect(
-            "Countries to Compare",
-            ['England', 'Scotland', 'France'],
-            default=['England', 'France']
-        )
-    
-    if selected_countries:
-        scenario_data = []
-        for country in selected_countries:
-            country_venues = all_venues[all_venues['Country'] == country]
-            
-            min_cost = country_venues['Base Price (£)'].min() + (scenario_guests * country_venues['Price per Guest (£)'].min())
-            avg_cost = country_venues['Base Price (£)'].mean() + (scenario_guests * country_venues['Price per Guest (£)'].mean())
-            max_cost = country_venues['Base Price (£)'].max() + (scenario_guests * country_venues['Price per Guest (£)'].max())
-            
-            scenario_data.append({
-                'Country': country,
-                'Minimum': min_cost,
-                'Average': avg_cost,
-                'Maximum': max_cost
-            })
+    if not all_venues.empty and 'Country' in all_venues.columns and 'Base Price (£)' in all_venues.columns and 'Price per Guest (£)' in all_venues.columns:
+        col1, col2 = st.columns(2)
         
-        scenario_df = pd.DataFrame(scenario_data)
+        with col1:
+            scenario_guests = st.slider("Scenario Guest Count", 100, 250, 150, 10)
         
-        fig_scenario = px.bar(
-            scenario_df,
-            x='Country',
-            y=['Minimum', 'Average', 'Maximum'],
-            title=f'Cost Scenarios for {scenario_guests} Guests',
-            labels={'value': 'Estimated Cost (£)', 'variable': 'Scenario'},
-            barmode='group'
-        )
-        fig_scenario.update_layout(height=400)
-        st.plotly_chart(fig_scenario, use_container_width=True)
+        with col2:
+            available_countries = all_venues['Country'].unique().tolist()
+            default_countries = [c for c in ['England', 'France'] if c in available_countries]
+            selected_countries = st.multiselect(
+                "Countries to Compare",
+                available_countries,
+                default=default_countries if default_countries else available_countries[:2] if len(available_countries) >= 2 else available_countries
+            )
+        
+        if selected_countries:
+            scenario_data = []
+            for country in selected_countries:
+                country_venues = all_venues[all_venues['Country'] == country]
+                
+                if not country_venues.empty:
+                    min_cost = country_venues['Base Price (£)'].min() + (scenario_guests * country_venues['Price per Guest (£)'].min())
+                    avg_cost = country_venues['Base Price (£)'].mean() + (scenario_guests * country_venues['Price per Guest (£)'].mean())
+                    max_cost = country_venues['Base Price (£)'].max() + (scenario_guests * country_venues['Price per Guest (£)'].max())
+                    
+                    scenario_data.append({
+                        'Country': country,
+                        'Minimum': min_cost,
+                        'Average': avg_cost,
+                        'Maximum': max_cost
+                    })
+            
+            if scenario_data:
+                scenario_df = pd.DataFrame(scenario_data)
+                
+                fig_scenario = px.bar(
+                    scenario_df,
+                    x='Country',
+                    y=['Minimum', 'Average', 'Maximum'],
+                    title=f'Cost Scenarios for {scenario_guests} Guests',
+                    labels={'value': 'Estimated Cost (£)', 'variable': 'Scenario'},
+                    barmode='group'
+                )
+                fig_scenario.update_layout(height=400)
+                st.plotly_chart(fig_scenario, use_container_width=True)
+    else:
+        st.info("Upload venue data with pricing information (Base Price and Price per Guest) for budget scenarios.")
 
 # Footer
 st.markdown("---")
