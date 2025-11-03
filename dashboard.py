@@ -70,6 +70,47 @@ def load_csv_or_excel(file_path, sheet_name=None):
         st.error(f"Error loading {file_path}: {str(e)}")
         return None
 
+def clean_guest_list(df):
+    """
+    Clean and dedupe guest list data to prevent double counting.
+    Removes summary rows, empty rows, and ensures event columns contain only 0 or 1.
+    """
+    if df.empty:
+        return df
+    
+    # Create a copy to avoid modifying the original
+    cleaned_df = df.copy()
+    
+    # Remove rows with NaN names (empty rows)
+    cleaned_df = cleaned_df.dropna(subset=['Name'])
+    
+    # Remove summary/header rows by checking if Name contains known summary keywords
+    summary_keywords = ['EVENT SUMMARY', 'CATEGORY BREAKDOWN', 'Event', 'Category']
+    cleaned_df = cleaned_df[~cleaned_df['Name'].isin(summary_keywords)]
+    
+    # Remove rows where event columns contain non-binary values
+    # First, check if event columns exist
+    event_cols = ['Engagement Party', 'Maryland Celebration', 'Wedding']
+    available_event_cols = [col for col in event_cols if col in cleaned_df.columns]
+    
+    if available_event_cols:
+        # Filter out rows where any event column contains values that aren't '0', '1', 0, or 1
+        for col in available_event_cols:
+            # Convert to string for comparison, then filter
+            cleaned_df[col] = cleaned_df[col].astype(str)
+            # Keep only rows where the value is '0', '1', '0.0', '1.0', or nan (will be converted later)
+            valid_values = ['0', '1', '0.0', '1.0', 'nan']
+            cleaned_df = cleaned_df[cleaned_df[col].isin(valid_values)]
+    
+    # Remove any duplicate guest names (keep first occurrence)
+    if 'Name' in cleaned_df.columns:
+        cleaned_df = cleaned_df.drop_duplicates(subset=['Name'], keep='first')
+    
+    # Reset index after filtering
+    cleaned_df = cleaned_df.reset_index(drop=True)
+    
+    return cleaned_df
+
 @st.cache_data
 def load_wedding_data(guest_file=None, england_scotland_file=None, france_file=None):
     """Load wedding data from CSV or Excel files."""
@@ -84,6 +125,9 @@ def load_wedding_data(guest_file=None, england_scotland_file=None, france_file=N
     if master_list is None:
         st.error("Failed to load guest list. Using empty dataframe.")
         master_list = pd.DataFrame()
+    
+    # Clean guest list to prevent double counting
+    master_list = clean_guest_list(master_list)
     
     # Load venue data
     england_venues = load_csv_or_excel(england_scotland_path)
