@@ -49,7 +49,14 @@ def load_csv_or_excel(file_path, sheet_name=None):
     """Load data from CSV or Excel file."""
     try:
         if file_path.endswith('.csv'):
-            return pd.read_csv(file_path)
+            # Try different encodings
+            for encoding in ['utf-8', 'latin-1', 'iso-8859-1', 'cp1252']:
+                try:
+                    return pd.read_csv(file_path, encoding=encoding)
+                except UnicodeDecodeError:
+                    continue
+            # If all encodings fail, raise error
+            raise ValueError(f"Could not decode {file_path} with any common encoding")
         elif file_path.endswith(('.xlsx', '.xls')):
             if sheet_name:
                 return pd.read_excel(file_path, sheet_name=sheet_name)
