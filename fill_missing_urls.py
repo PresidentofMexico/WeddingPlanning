@@ -13,33 +13,6 @@ Usage:
 import pandas as pd
 import os
 
-def search_venue_url(venue_name, region):
-    """
-    Search for a venue's official website using web search.
-    
-    Args:
-        venue_name: Name of the venue
-        region: Region/country of the venue
-        
-    Returns:
-        str or None: Found URL or None if search fails
-    """
-    print(f"  Searching web for: {venue_name} ({region})")
-    
-    # Create search query
-    query = f"{venue_name} {region} wedding venue official website"
-    
-    try:
-        # Use a simple search approach - try to find official website
-        # This is a placeholder - in production you'd use a real search API
-        # For now, we'll return None and let manual review happen
-        print(f"    Web search would be performed here for: {query}")
-        print(f"    (Skipping automated web search - manual review recommended)")
-        return None
-    except Exception as e:
-        print(f"    Search error: {e}")
-        return None
-
 def fill_missing_urls_in_file(filename):
     """
     Process a single CSV file and fill in missing URLs.
@@ -140,8 +113,8 @@ def fill_missing_urls_in_file(filename):
         print(f"  (Skipping automated web search - these should be researched manually)")
     
     # Save the updated CSV if changes were made
-    changes_made = (stats['filled_pricing_from_website'] + 
-                    stats['filled_website_from_pricing'] > 0)
+    changes_made = ((stats['filled_pricing_from_website'] + 
+                    stats['filled_website_from_pricing']) > 0)
     
     if changes_made:
         try:
