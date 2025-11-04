@@ -4,17 +4,26 @@ A comprehensive Streamlit dashboard for managing all aspects of wedding planning
 
 ## ✨ What's New
 
+### USD Currency Conversion & Clickable Venue Links (Latest)
+🎉 **NEW**: All venue costs are now displayed in USD ($) for easy comparison!
+- **Automatic currency conversion** from GBP (£) and EUR (€) to USD ($) using live exchange rates
+- **Clickable venue names** that link directly to the venue's pricing source URL (opens in new tab)
+- **Exchange rate script** (`convert_to_usd.py`) to refresh USD prices anytime with current rates
+- **Seamless comparison** across England, Scotland, France, and United States venues
+
 ### Automatic Venue File Detection
-The dashboard now automatically detects and loads all venue CSV files in the repository! Simply add a new `{country}_csv.csv` file to the repository root, and it will be immediately available in the dashboard without any code changes. Currently supporting venues in **England, Scotland, United States, and France** with 62 total venues across all locations.
+The dashboard automatically detects and loads all venue CSV files in the repository! Simply add a new `{country}_csv.csv` file to the repository root, and it will be immediately available in the dashboard without any code changes. Currently supporting venues in **England, Scotland, United States, and France** with 62 total venues across all locations.
 
 ## Features
 
 ### 1. 📊 Venue Comparison
 - **Interactive venue analysis** across multiple countries (auto-detected from CSV files)
+- **USD pricing display** for all venues with automatic conversion from GBP/EUR
+- **Clickable venue names** linking to official pricing sources (opens in new tab)
 - **Automatic country detection** from filenames - supports unlimited countries/regions
 - **Price vs Capacity scatter plots** to find the best value venues
 - **Cost calculator** for estimating total venue costs based on guest count
-- **Filtering options** by country, capacity, and price range
+- **Filtering options** by country, capacity, and price range (in USD)
 - **Detailed venue information table** with all key attributes
 - **Dynamic download options** for each country's venue data
 
@@ -64,6 +73,49 @@ The dashboard now automatically detects and loads all venue CSV files in the rep
 
 3. **Access the dashboard:**
    - Open your browser and navigate to `http://localhost:8501`
+
+## Currency Conversion & Exchange Rates
+
+### Converting Venue Prices to USD
+
+All venue prices are displayed in USD for easy comparison across different countries. The repository includes a currency conversion script that:
+
+1. **Fetches live exchange rates** from free APIs (GBP→USD, EUR→USD)
+2. **Converts pricing columns** in all venue CSV files
+3. **Adds USD columns** to preserve original pricing
+4. **Handles fallback rates** if APIs are unavailable
+
+**To refresh exchange rates and update USD prices:**
+
+```bash
+python convert_to_usd.py
+```
+
+**What it does:**
+- Processes `englandmore_csv.csv`, `englandscotland_csv.csv` (GBP → USD)
+- Processes `france_csv.csv` (EUR → USD)
+- Processes `unitedstates_csv.csv` (already in USD, standardizes column names)
+- Creates or updates USD columns: `Published Venue Hire / Package (USD)`, `Per-Head / Menu From (USD)`, `Base Price (USD)`, `Price per Guest (USD)`
+- Preserves original currency columns for reference
+
+**Exchange Rate APIs Used:**
+- Primary: `https://open.er-api.com/v6/latest/USD` (no authentication required)
+- Fallback: `https://api.exchangerate-api.com/v4/latest/USD`
+- If both fail: Uses conservative fallback rates (GBP: 1.27, EUR: 1.09)
+
+**When to run the script:**
+- After adding new venue data with GBP/EUR pricing
+- Periodically to refresh with current exchange rates
+- Before deploying updates to production
+
+### Clickable Venue Links
+
+Venue names in the dashboard are automatically rendered as clickable hyperlinks when a "Pricing Source URL(s)" column is present in the CSV. Clicking a venue name:
+- Opens the venue's official pricing page in a new browser tab
+- Allows quick access to detailed pricing information
+- Helps verify and update pricing data
+
+To add clickable links to new venues, include the `Pricing Source URL(s)` column in your CSV with the venue's website URL.
 
 ## Data Management
 
@@ -195,8 +247,21 @@ Optional columns (recommended for full functionality):
 - **Exclusive Use?**: Whether exclusive use is available
 - **Bedrooms Onsite**: Number of bedrooms
 - **Nearest Airports**: Nearby airports
-- **Base Price (£)**: Base venue hire cost (auto-generated if not provided)
-- **Price per Guest (£)**: Per-guest pricing (auto-generated if not provided)
+- **Pricing Source URL(s)**: URL to venue's pricing page (enables clickable venue names)
+
+**Pricing columns** (original currency - GBP, EUR, or USD):
+- **Published Venue Hire / Package (GBP)**: Published venue hire fee in British Pounds
+- **Per-Head / Menu From (GBP)**: Per-guest pricing in British Pounds
+- **Published Pricing**: General pricing information (EUR for France venues)
+- Or equivalent columns in EUR (€) or USD ($)
+
+**USD pricing columns** (auto-generated by `convert_to_usd.py`):
+- **Published Venue Hire / Package (USD)**: Converted venue hire fee in US Dollars
+- **Per-Head / Menu From (USD)**: Converted per-guest pricing in US Dollars
+- **Base Price (USD)**: Base venue cost in USD
+- **Price per Guest (USD)**: Per-guest pricing in USD
+
+> **Note**: The dashboard prioritizes USD pricing for display. Original currency columns (GBP, EUR) are preserved for reference. Run `convert_to_usd.py` to generate or update USD columns from original pricing.
 
 ### Excel File Format (Legacy Support)
 
@@ -234,13 +299,49 @@ No code changes required! The dashboard will:
 3. **Option B - Replace Repository Files:**
    - For guest list: Replace `wedding_roster_csv.csv`
    - For venues: Add or replace any `*_csv.csv` files in the repository root
+   - If adding GBP or EUR pricing, run `python convert_to_usd.py` to generate USD columns
    - Changes are permanent for all users
    - All venue files are automatically detected and loaded
 
+### Working with Venue Pricing
+
+**To add or update venue prices:**
+
+1. **Edit the CSV file** with pricing in the original currency (GBP, EUR, or USD)
+2. **Add pricing columns** if not present:
+   - For UK venues: `Published Venue Hire / Package (GBP)`, `Per-Head / Menu From (GBP)`
+   - For France venues: `Published Pricing` (in EUR)
+   - For US venues: Use USD columns directly
+3. **Run the conversion script** to generate USD columns:
+   ```bash
+   python convert_to_usd.py
+   ```
+4. **Commit the updated CSV** files to the repository
+5. **Restart the dashboard** to see the updated prices
+
+The dashboard will display all prices in USD for consistent comparison across countries.
+
+### Deployment Considerations
+
+**Dependencies:**
+- All required packages are listed in `requirements.txt`
+- New dependency: `requests>=2.31.0` (for exchange rate API calls)
+- The `convert_to_usd.py` script requires internet access to fetch live rates
+- Fallback rates are used if APIs are unreachable
+
+**For Streamlit Community Cloud or other deployment platforms:**
+1. Ensure `requirements.txt` includes all dependencies
+2. The dashboard will work with existing USD columns even without API access
+3. To update exchange rates in deployment:
+   - Run `convert_to_usd.py` locally with internet access
+   - Commit the updated CSV files with new USD columns
+   - Push to your repository to deploy
+
 ### Modifying Price Estimates
-The venue prices are currently estimated. To use real prices:
-1. Add `Base Price (£)` and `Price per Guest (£)` columns to your venue CSV files
-2. The dashboard will automatically use these values instead of generating estimates
+To use real venue prices instead of estimates:
+1. Add pricing columns to your venue CSV files (in GBP, EUR, or USD)
+2. Run `python convert_to_usd.py` to generate USD columns
+3. The dashboard will automatically use these values instead of generating random estimates
 
 ### Adding New Events
 To track additional events:
