@@ -44,6 +44,46 @@ os.makedirs(DATA_DIR, exist_ok=True)
 # Default data files (from repo root)
 DEFAULT_GUEST_FILE = 'wedding_roster_csv.csv'
 
+# Country name mapping for venue file detection
+# Maps filename patterns to display country names
+# Patterns are matched in order, so put more specific patterns first
+COUNTRY_NAME_MAP = {
+    'englandscotland': 'England/Scotland',  # Must come before 'england'
+    'englandmore': 'England',               # Must come before 'england'
+    'unitedstates': 'United States',
+    'usa': 'United States',
+    'us': 'United States',
+    'england': 'England',
+    'scotland': 'Scotland',
+    'france': 'France',
+    'italy': 'Italy',
+    'spain': 'Spain',
+    'germany': 'Germany',
+}
+
+def infer_country_from_filename(filename):
+    """
+    Infer country name from a venue CSV filename.
+    
+    Args:
+        filename: The filename (e.g., 'unitedstates_csv.csv')
+    
+    Returns:
+        Country name string (e.g., 'United States')
+    """
+    # Remove _csv.csv suffix to get the base name
+    base_name = filename.replace('_csv.csv', '').replace('.csv', '')
+    base_lower = base_name.lower()
+    
+    # Try to match against known patterns (in order)
+    for pattern, country_name in COUNTRY_NAME_MAP.items():
+        if pattern == base_lower or pattern in base_lower:
+            return country_name
+    
+    # If no match, convert filename to Title Case
+    # Convert snake_case or camelCase to Title Case
+    return ' '.join(word.capitalize() for word in base_name.replace('_', ' ').split())
+
 def detect_venue_files():
     """
     Auto-detect all venue CSV files in the project root.
@@ -57,39 +97,7 @@ def detect_venue_files():
     for filename in os.listdir(project_root):
         if filename.endswith('_csv.csv') and filename != DEFAULT_GUEST_FILE:
             file_path = os.path.join(project_root, filename)
-            
-            # Infer country/region from filename
-            # Remove _csv.csv suffix to get the base name
-            base_name = filename.replace('_csv.csv', '')
-            
-            # Map common filename patterns to countries
-            country_map = {
-                'unitedstates': 'United States',
-                'usa': 'United States',
-                'us': 'United States',
-                'englandscotland': 'England/Scotland',
-                'englandmore': 'England',
-                'england': 'England',
-                'scotland': 'Scotland',
-                'france': 'France',
-                'italy': 'Italy',
-                'spain': 'Spain',
-                'germany': 'Germany',
-            }
-            
-            # Try to match the base name to a known country
-            country = None
-            base_lower = base_name.lower()
-            for key, value in country_map.items():
-                if key in base_lower:
-                    country = value
-                    break
-            
-            # If no match, use a cleaned version of the filename as country name
-            if not country:
-                # Convert snake_case or camelCase to Title Case
-                country = ' '.join(word.capitalize() for word in base_name.replace('_', ' ').split())
-            
+            country = infer_country_from_filename(filename)
             venue_files.append((file_path, country))
     
     return venue_files
@@ -365,31 +373,8 @@ with st.sidebar:
                     with open(venue_file_path, 'wb') as f:
                         f.write(uploaded_file.getbuffer())
                     
-                    # Infer country from filename
-                    base_name = uploaded_file.name.replace('_csv.csv', '').replace('.csv', '')
-                    country_map = {
-                        'unitedstates': 'United States',
-                        'usa': 'United States',
-                        'us': 'United States',
-                        'englandscotland': 'England/Scotland',
-                        'englandmore': 'England',
-                        'england': 'England',
-                        'scotland': 'Scotland',
-                        'france': 'France',
-                        'italy': 'Italy',
-                        'spain': 'Spain',
-                    }
-                    
-                    country = None
-                    base_lower = base_name.lower()
-                    for key, value in country_map.items():
-                        if key in base_lower:
-                            country = value
-                            break
-                    
-                    if not country:
-                        country = ' '.join(word.capitalize() for word in base_name.replace('_', ' ').split())
-                    
+                    # Infer country from filename using the same logic as auto-detection
+                    country = infer_country_from_filename(uploaded_file.name)
                     uploaded_venues[venue_file_path] = country
                 
                 st.session_state.uploaded_venue_files = uploaded_venues
