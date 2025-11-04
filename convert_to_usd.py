@@ -48,8 +48,13 @@ def fetch_exchange_rates():
             
             # API returns rates FROM USD, so we need to calculate TO USD
             # GBP_to_USD = 1 / USD_to_GBP
-            usd_to_gbp = data['rates']['GBP']
-            usd_to_eur = data['rates']['EUR']
+            usd_to_gbp = data['rates'].get('GBP')
+            usd_to_eur = data['rates'].get('EUR')
+            
+            # Validate rates are positive numbers
+            if not usd_to_gbp or not usd_to_eur or usd_to_gbp <= 0 or usd_to_eur <= 0:
+                print(f"  Invalid rates from {api_url}: GBP={usd_to_gbp}, EUR={usd_to_eur}")
+                continue
             
             rates = {
                 'GBP_to_USD': 1 / usd_to_gbp,
@@ -62,8 +67,11 @@ def fetch_exchange_rates():
             print(f"  1 EUR = ${rates['EUR_to_USD']:.4f} USD")
             
             return rates
-        except Exception as e:
-            print(f"  Could not fetch from {api_url}: {e}")
+        except requests.exceptions.RequestException as e:
+            print(f"  Network error accessing {api_url}: {e}")
+            continue
+        except (KeyError, ValueError, TypeError) as e:
+            print(f"  Invalid data format from {api_url}: {e}")
             continue
     
     # If all APIs fail, use fallback rates
@@ -102,7 +110,7 @@ def extract_numeric_price(value):
     value_str = value_str.replace(' pp', '').replace(' per person', '')
     
     # Extract first number found (handles ranges like "100-200")
-    numbers = re.findall(r'\d+\.?\d*', value_str)
+    numbers = re.findall(r'\d+(?:\.\d+)?', value_str)
     if numbers:
         return float(numbers[0])
     

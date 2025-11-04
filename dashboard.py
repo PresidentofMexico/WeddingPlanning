@@ -8,6 +8,7 @@ import json
 import random
 import re
 import os
+import html
 from datetime import datetime
 
 # Configure page
@@ -219,13 +220,14 @@ def create_venue_link(venue_name, pricing_url):
         str: HTML formatted link or plain text if no URL
     """
     if pd.notna(pricing_url) and pricing_url and str(pricing_url).strip():
-        # Clean the URL
-        url = str(pricing_url).strip()
+        # Clean and sanitize the URL and venue name to prevent XSS
+        url = html.escape(str(pricing_url).strip())
+        safe_name = html.escape(str(venue_name))
         # Return HTML link that opens in new tab
-        return f'<a href="{url}" target="_blank" rel="noopener noreferrer">{venue_name}</a>'
+        return f'<a href="{url}" target="_blank" rel="noopener noreferrer">{safe_name}</a>'
     else:
-        # No URL available, return plain text
-        return venue_name
+        # No URL available, return plain text (escaped)
+        return html.escape(str(venue_name))
 
 @st.cache_data
 def load_wedding_data(guest_file=None, uploaded_venue_files=None):
