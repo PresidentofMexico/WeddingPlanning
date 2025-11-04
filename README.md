@@ -195,17 +195,10 @@ If using Excel files, the dashboard expects:
    - Replace `englandscotland_csv.csv` and/or `france_csv.csv` with your venues
    - Changes are permanent for all users
 
-### Venue Pricing
-The dashboard automatically extracts venue pricing from the CSV files:
-- **England/Scotland venues**: Parsed from `Published Venue Hire / Package (GBP)` and `Per_Head/Menu From (GBP)` columns
-- **France venues**: Parsed from `Published Pricing` column (EUR automatically converted to GBP)
-- All pricing is validated against publicly available sources (2025 market rates)
-- See [PRICING_METHODOLOGY.md](PRICING_METHODOLOGY.md) for detailed information about pricing extraction and validation
-
-To update pricing:
-1. Edit the `Published Venue Hire / Package (GBP)` and `Per_Head/Menu From (GBP)` columns in your CSV files with current rates
-2. Alternatively, add `Base Price (£)` and `Price per Guest (£)` columns directly (these will override parsed values)
-3. The dashboard will automatically use the most current pricing data available
+### Modifying Price Estimates
+The venue prices are currently estimated. To use real prices:
+1. Add `Base Price (£)` and `Price per Guest (£)` columns to your venue CSV files
+2. The dashboard will automatically use these values instead of generating estimates
 
 ### Adding New Events
 To track additional events:
