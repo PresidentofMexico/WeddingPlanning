@@ -11,11 +11,7 @@ Usage:
 """
 
 import pandas as pd
-import requests
 import os
-import sys
-import time
-from datetime import datetime
 
 def search_venue_url(venue_name, region):
     """
