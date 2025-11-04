@@ -201,7 +201,7 @@ def load_wedding_data(guest_file=None, england_scotland_file=None, france_file=N
                 if 'Per_Head/Menu From (GBP)' in row.index and pd.notna(row.get('Per_Head/Menu From (GBP)')):
                     per_head_text = str(row['Per_Head/Menu From (GBP)'])
                     # Look for "From" pricing first - this is usually the starting/minimum price
-                    from_match = re.search(r'(?:From|from)\s*£?\s*(\d{1,3}(?:,\d{3})*|\d+)', per_head_text)
+                    from_match = re.search(r'(?:From|from)\s*£?\s*(\d+(?:,\d{3})*)', per_head_text)
                     if from_match:
                         from_price = int(from_match.group(1).replace(',', ''))
                         if 50 <= from_price <= 1000:
@@ -209,7 +209,7 @@ def load_wedding_data(guest_file=None, england_scotland_file=None, france_file=N
                     
                     # If no "From" pricing found, extract all amounts
                     if per_guest is None:
-                        amounts = re.findall(r'£?\s*(\d{1,3}(?:,\d{3})*|\d+)', per_head_text)
+                        amounts = re.findall(r'£?\s*(\d+(?:,\d{3})*)', per_head_text)
                         if amounts:
                             # Clean and convert to numbers
                             clean_amounts = [int(amt.replace(',', '')) for amt in amounts]
@@ -225,7 +225,7 @@ def load_wedding_data(guest_file=None, england_scotland_file=None, france_file=N
                     # Only extract per-person pricing from here if we didn't get it from Per_Head column
                     if per_guest is None:
                         # Find explicit per-person pricing in this field (marked with "pp")
-                        pp_match = re.findall(r'£?\s*(\d{1,3}(?:,\d{3})+|\d+)\s*(?:pp|per\s*person|per\s*head)', venue_hire_text, re.IGNORECASE)
+                        pp_match = re.findall(r'£?\s*(\d+(?:,\d{3})*)\s*(?:pp|per\s*person|per\s*head)', venue_hire_text, re.IGNORECASE)
                         if pp_match:
                             clean_pp = [int(amt.replace(',', '')) for amt in pp_match]
                             # Filter for reasonable per-person amounts
@@ -238,7 +238,8 @@ def load_wedding_data(guest_file=None, england_scotland_file=None, france_file=N
                     hire_portion = re.split(r'\s*;\s*packages', venue_hire_text, flags=re.IGNORECASE)[0]
                     
                     # Look for currency amounts in the hire portion (typically 4-5 digits for venue hire)
-                    amounts = re.findall(r'£?\s*(\d{1,3}(?:,\d{3})+)', hire_portion.replace('У', '-'))
+                    # Note: Replace Cyrillic 'У' with '-' as it appears in some CSV data as a range separator
+                    amounts = re.findall(r'£?\s*(\d+(?:,\d{3})*)', hire_portion.replace('У', '-'))
                     if amounts:
                         # Clean and convert to numbers
                         clean_amounts = [int(amt.replace(',', '')) for amt in amounts]
@@ -251,7 +252,7 @@ def load_wedding_data(guest_file=None, england_scotland_file=None, france_file=N
                 if 'Published Pricing' in row.index and pd.notna(row.get('Published Pricing')):
                     pricing_text = str(row['Published Pricing'])
                     # Look for Euro amounts and convert to GBP (approximate 1 EUR = 0.85 GBP as of 2025)
-                    euro_amounts = re.findall(r'€\s*(\d{1,3}(?:,\d{3})+|\d+)', pricing_text)
+                    euro_amounts = re.findall(r'€\s*(\d+(?:,\d{3})*)', pricing_text)
                     if euro_amounts:
                         clean_amounts = [int(amt.replace(',', '')) for amt in euro_amounts]
                         # Convert EUR to GBP (0.85 conversion rate)
@@ -260,7 +261,7 @@ def load_wedding_data(guest_file=None, england_scotland_file=None, france_file=N
                     
                     # Also check for per person pricing in euros
                     # Match patterns like "€125–€180 pp" or "Menu €125"
-                    per_person_match = re.search(r'(?:Menu|pp)\s*€?\s*(\d{1,3})', pricing_text, re.IGNORECASE)
+                    per_person_match = re.search(r'(?:Menu|pp)\s*€?\s*(\d+)', pricing_text, re.IGNORECASE)
                     if per_person_match and per_guest is None:
                         per_guest = int(int(per_person_match.group(1)) * 0.85)
                 
