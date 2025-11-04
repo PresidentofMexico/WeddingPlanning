@@ -61,6 +61,41 @@ COUNTRY_NAME_MAP = {
     'germany': 'Germany',
 }
 
+def infer_country_from_region(region_str, fallback_country):
+    """
+    Infer standardized country name from a Region/Country field.
+    
+    Args:
+        region_str: The region/country string from the CSV
+        fallback_country: Country name to use if no match found
+    
+    Returns:
+        Standardized country name
+    """
+    if pd.isna(region_str):
+        return fallback_country
+    
+    region_str = str(region_str)
+    
+    # Check against known country patterns
+    # This aligns with our COUNTRY_NAME_MAP but for Region/Country field parsing
+    if 'England' in region_str:
+        return 'England'
+    elif 'Scotland' in region_str:
+        return 'Scotland'
+    elif 'USA' in region_str or 'United States' in region_str:
+        return 'United States'
+    elif 'France' in region_str:
+        return 'France'
+    elif 'Italy' in region_str:
+        return 'Italy'
+    elif 'Spain' in region_str:
+        return 'Spain'
+    elif 'Germany' in region_str:
+        return 'Germany'
+    else:
+        return fallback_country
+
 def infer_country_from_filename(filename):
     """
     Infer country name from a venue CSV filename.
@@ -216,23 +251,9 @@ def load_wedding_data(guest_file=None, uploaded_venue_files=None):
             # First check if there's a Region/Country column that needs parsing
             if 'Region/Country' in venue_df.columns:
                 # For files with Region/Country column, infer country from that field
-                def infer_country_from_region(region_str):
-                    if pd.isna(region_str):
-                        return country_name
-                    region_str = str(region_str)
-                    # Check for specific country names in the region string
-                    if 'England' in region_str:
-                        return 'England'
-                    elif 'Scotland' in region_str:
-                        return 'Scotland'
-                    elif 'USA' in region_str or 'United States' in region_str:
-                        return 'United States'
-                    elif 'France' in region_str:
-                        return 'France'
-                    else:
-                        return country_name
-                
-                venue_df['Country'] = venue_df['Region/Country'].apply(infer_country_from_region)
+                venue_df['Country'] = venue_df['Region/Country'].apply(
+                    lambda x: infer_country_from_region(x, country_name)
+                )
             else:
                 # Use the detected country name from filename
                 venue_df['Country'] = country_name
@@ -602,8 +623,10 @@ with tab1:
                         country_venues = all_venues[all_venues['Country'] == country]
                         if not country_venues.empty:
                             country_csv = country_venues.to_csv(index=False)
-                            # Generate filename from country name
-                            filename = country.lower().replace('/', '').replace(' ', '') + '_csv.csv'
+                            # Generate filename from country name (sanitize for filesystem)
+                            # Remove all non-alphanumeric characters except underscores
+                            safe_name = re.sub(r'[^a-z0-9_]', '', country.lower().replace(' ', ''))
+                            filename = f"{safe_name}_csv.csv"
                             st.download_button(
                                 label=f"📥 {country}",
                                 data=country_csv,
