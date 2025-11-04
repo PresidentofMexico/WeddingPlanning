@@ -43,8 +43,99 @@ os.makedirs(DATA_DIR, exist_ok=True)
 
 # Default data files (from repo root)
 DEFAULT_GUEST_FILE = 'wedding_roster_csv.csv'
-DEFAULT_ENGLAND_SCOTLAND_FILE = 'englandscotland_csv.csv'
-DEFAULT_FRANCE_FILE = 'france_csv.csv'
+
+# Country name mapping for venue file detection
+# Maps filename patterns to display country names
+# Patterns are matched in order, so put more specific patterns first
+COUNTRY_NAME_MAP = {
+    'englandscotland': 'England/Scotland',  # Must come before 'england'
+    'englandmore': 'England',               # Must come before 'england'
+    'unitedstates': 'United States',
+    'usa': 'United States',
+    'us': 'United States',
+    'england': 'England',
+    'scotland': 'Scotland',
+    'france': 'France',
+    'italy': 'Italy',
+    'spain': 'Spain',
+    'germany': 'Germany',
+}
+
+def infer_country_from_region(region_str, fallback_country):
+    """
+    Infer standardized country name from a Region/Country field.
+    
+    Args:
+        region_str: The region/country string from the CSV
+        fallback_country: Country name to use if no match found
+    
+    Returns:
+        Standardized country name
+    """
+    if pd.isna(region_str):
+        return fallback_country
+    
+    region_str = str(region_str)
+    
+    # Check against known country patterns
+    # This aligns with our COUNTRY_NAME_MAP but for Region/Country field parsing
+    if 'England' in region_str:
+        return 'England'
+    elif 'Scotland' in region_str:
+        return 'Scotland'
+    elif 'USA' in region_str or 'United States' in region_str:
+        return 'United States'
+    elif 'France' in region_str:
+        return 'France'
+    elif 'Italy' in region_str:
+        return 'Italy'
+    elif 'Spain' in region_str:
+        return 'Spain'
+    elif 'Germany' in region_str:
+        return 'Germany'
+    else:
+        return fallback_country
+
+def infer_country_from_filename(filename):
+    """
+    Infer country name from a venue CSV filename.
+    
+    Args:
+        filename: The filename (e.g., 'unitedstates_csv.csv')
+    
+    Returns:
+        Country name string (e.g., 'United States')
+    """
+    # Remove _csv.csv suffix to get the base name
+    base_name = filename.replace('_csv.csv', '').replace('.csv', '')
+    base_lower = base_name.lower()
+    
+    # Try to match against known patterns (in order)
+    for pattern, country_name in COUNTRY_NAME_MAP.items():
+        if pattern == base_lower or pattern in base_lower:
+            return country_name
+    
+    # If no match, convert filename to Title Case
+    # Convert snake_case or camelCase to Title Case
+    return ' '.join(word.capitalize() for word in base_name.replace('_', ' ').split())
+
+def detect_venue_files():
+    """
+    Auto-detect all venue CSV files in the project root.
+    Returns a list of tuples: (file_path, country_name)
+    Files should match pattern *_csv.csv and not be the guest list.
+    """
+    venue_files = []
+    project_root = os.path.dirname(__file__) or '.'
+    
+    # Find all *_csv.csv files in the project root
+    for filename in os.listdir(project_root):
+        if filename.endswith('_csv.csv') and filename != DEFAULT_GUEST_FILE:
+            file_path = os.path.join(project_root, filename)
+            country = infer_country_from_filename(filename)
+            venue_files.append((file_path, country))
+    
+    return venue_files
 
 def load_csv_or_excel(file_path, sheet_name=None):
     """Load data from CSV or Excel file."""
@@ -117,13 +208,21 @@ def clean_guest_list(df):
     return cleaned_df
 
 @st.cache_data
-def load_wedding_data(guest_file=None, england_scotland_file=None, france_file=None):
-    """Load wedding data from CSV or Excel files."""
+def load_wedding_data(guest_file=None, uploaded_venue_files=None):
+    """
+    Load wedding data from CSV or Excel files.
+    Automatically detects all venue CSV files in the project root.
     
-    # Use provided files or defaults
+    Args:
+        guest_file: Optional path to guest list file
+        uploaded_venue_files: Optional dict of {file_path: country_name} for uploaded files
+    
+    Returns:
+        Tuple of (master_list, all_venues, venue_files_info)
+    """
+    
+    # Use provided file or default
     guest_path = guest_file or DEFAULT_GUEST_FILE
-    england_scotland_path = england_scotland_file or DEFAULT_ENGLAND_SCOTLAND_FILE
-    france_path = france_file or DEFAULT_FRANCE_FILE
     
     # Load guest list
     master_list = load_csv_or_excel(guest_path)
@@ -134,26 +233,41 @@ def load_wedding_data(guest_file=None, england_scotland_file=None, france_file=N
     # Clean guest list to prevent double counting
     master_list = clean_guest_list(master_list)
     
-    # Load venue data
-    england_venues = load_csv_or_excel(england_scotland_path)
-    france_venues = load_csv_or_excel(france_path)
+    # Auto-detect venue files or use uploaded files
+    if uploaded_venue_files:
+        venue_files = list(uploaded_venue_files.items())
+    else:
+        venue_files = detect_venue_files()
     
-    if england_venues is None:
-        england_venues = pd.DataFrame()
-    if france_venues is None:
-        france_venues = pd.DataFrame()
+    # Load and combine all venue data
+    all_venue_dfs = []
+    venue_files_info = {}
     
-    # Clean up venue data
-    if not england_venues.empty and 'Region/Country' in england_venues.columns:
-        england_venues['Country'] = england_venues['Region/Country'].apply(lambda x: 'England' if 'England' in str(x) else 'Scotland')
-    elif not england_venues.empty:
-        england_venues['Country'] = 'England'
+    for file_path, country_name in venue_files:
+        venue_df = load_csv_or_excel(file_path)
+        
+        if venue_df is not None and not venue_df.empty:
+            # Add country information
+            # First check if there's a Region/Country column that needs parsing
+            if 'Region/Country' in venue_df.columns:
+                # For files with Region/Country column, infer country from that field
+                venue_df['Country'] = venue_df['Region/Country'].apply(
+                    lambda x: infer_country_from_region(x, country_name)
+                )
+            else:
+                # Use the detected country name from filename
+                venue_df['Country'] = country_name
+            
+            all_venue_dfs.append(venue_df)
+            
+            # Track which files were loaded
+            venue_files_info[country_name] = {
+                'file_path': file_path,
+                'venue_count': len(venue_df)
+            }
     
-    if not france_venues.empty:
-        france_venues['Country'] = 'France'
-    
-    # Combine venue data
-    all_venues = pd.concat([england_venues, france_venues], ignore_index=True) if not england_venues.empty or not france_venues.empty else pd.DataFrame()
+    # Combine all venue data
+    all_venues = pd.concat(all_venue_dfs, ignore_index=True) if all_venue_dfs else pd.DataFrame()
     
     if not all_venues.empty:
         # Clean Venue column: strip whitespace and handle NaN
@@ -199,21 +313,18 @@ def load_wedding_data(guest_file=None, england_scotland_file=None, france_file=N
     elif not master_list.empty and 'Total Events' not in master_list.columns:
         master_list['Total Events'] = 0
     
-    return master_list, all_venues, england_venues, france_venues
+    return master_list, all_venues, venue_files_info
 
 # Initialize session state for uploaded files
 if 'guest_file_path' not in st.session_state:
     st.session_state.guest_file_path = None
-if 'england_scotland_file_path' not in st.session_state:
-    st.session_state.england_scotland_file_path = None
-if 'france_file_path' not in st.session_state:
-    st.session_state.france_file_path = None
+if 'uploaded_venue_files' not in st.session_state:
+    st.session_state.uploaded_venue_files = None
 
 # Load data with session state paths
-guest_list, all_venues, england_venues, france_venues = load_wedding_data(
+guest_list, all_venues, venue_files_info = load_wedding_data(
     st.session_state.guest_file_path,
-    st.session_state.england_scotland_file_path,
-    st.session_state.france_file_path
+    st.session_state.uploaded_venue_files
 )
 
 # Initialize session state for table arrangements
@@ -265,63 +376,54 @@ with st.sidebar:
                 except Exception as e:
                     st.error(f"Error uploading file: {str(e)}")
         
-        # England/Scotland venues upload
-        england_upload = st.file_uploader(
-            "England/Scotland Venues CSV",
+        # Venue files upload - now supports multiple files
+        venue_upload = st.file_uploader(
+            "Venue CSV Files",
             type=['csv'],
-            key='england_uploader',
-            help="CSV file with venue information for England and Scotland"
+            accept_multiple_files=True,
+            key='venue_uploader',
+            help="Upload one or more venue CSV files. Country will be inferred from filename (e.g., 'france_csv.csv' -> France)"
         )
         
-        if england_upload is not None:
+        if venue_upload:
             try:
-                # Save uploaded file with sanitized name
-                england_file_path = os.path.join(DATA_DIR, 'uploaded_england_scotland.csv')
-                with open(england_file_path, 'wb') as f:
-                    f.write(england_upload.getbuffer())
-                st.session_state.england_scotland_file_path = england_file_path
-                st.success("✓ England/Scotland venues uploaded!")
+                uploaded_venues = {}
+                for uploaded_file in venue_upload:
+                    # Save uploaded file
+                    venue_file_path = os.path.join(DATA_DIR, f'uploaded_{uploaded_file.name}')
+                    with open(venue_file_path, 'wb') as f:
+                        f.write(uploaded_file.getbuffer())
+                    
+                    # Infer country from filename using the same logic as auto-detection
+                    country = infer_country_from_filename(uploaded_file.name)
+                    uploaded_venues[venue_file_path] = country
+                
+                st.session_state.uploaded_venue_files = uploaded_venues
+                st.success(f"✓ {len(venue_upload)} venue file(s) uploaded!")
                 st.cache_data.clear()
                 st.rerun()
             except Exception as e:
-                st.error(f"Error uploading file: {str(e)}")
-        
-        # France venues upload
-        france_upload = st.file_uploader(
-            "France Venues CSV",
-            type=['csv'],
-            key='france_uploader',
-            help="CSV file with venue information for France"
-        )
-        
-        if france_upload is not None:
-            try:
-                # Save uploaded file with sanitized name
-                france_file_path = os.path.join(DATA_DIR, 'uploaded_france.csv')
-                with open(france_file_path, 'wb') as f:
-                    f.write(france_upload.getbuffer())
-                st.session_state.france_file_path = france_file_path
-                st.success("✓ France venues uploaded!")
-                st.cache_data.clear()
-                st.rerun()
-            except Exception as e:
-                st.error(f"Error uploading file: {str(e)}")
-            st.cache_data.clear()
-            st.rerun()
+                st.error(f"Error uploading venue files: {str(e)}")
         
         # Reset to defaults
         if st.button("🔄 Reset to Default Files"):
             st.session_state.guest_file_path = None
-            st.session_state.england_scotland_file_path = None
-            st.session_state.france_file_path = None
+            st.session_state.uploaded_venue_files = None
             st.cache_data.clear()
             st.rerun()
         
         # Show current data source
         st.markdown("**Current Data Sources:**")
         st.markdown(f"- Guest List: `{st.session_state.guest_file_path or DEFAULT_GUEST_FILE}`")
-        st.markdown(f"- England/Scotland: `{st.session_state.england_scotland_file_path or DEFAULT_ENGLAND_SCOTLAND_FILE}`")
-        st.markdown(f"- France: `{st.session_state.france_file_path or DEFAULT_FRANCE_FILE}`")
+        
+        # Display detected venue files
+        st.markdown("- **Venue Files:**")
+        if venue_files_info:
+            for country, info in sorted(venue_files_info.items()):
+                file_name = os.path.basename(info['file_path'])
+                st.markdown(f"  - {country}: `{file_name}` ({info['venue_count']} venues)")
+        else:
+            st.markdown("  - *No venue files detected*")
     
     st.markdown("---")
     
@@ -495,42 +597,44 @@ with tab1:
         st.markdown("---")
         st.subheader("💾 Export Venue Data")
         
-        col1, col2, col3 = st.columns(3)
+        # Always show the filtered venues download first
+        filtered_csv = filtered_venues.to_csv(index=False)
+        st.download_button(
+            label="📥 Download Filtered Venues",
+            data=filtered_csv,
+            file_name=f"filtered_venues_{datetime.now().strftime('%Y%m%d')}.csv",
+            mime='text/csv',
+            help="Download currently filtered venues"
+        )
         
-        with col1:
-            # Download filtered venues
-            filtered_csv = filtered_venues.to_csv(index=False)
-            st.download_button(
-                label="📥 Download Filtered Venues",
-                data=filtered_csv,
-                file_name=f"filtered_venues_{datetime.now().strftime('%Y%m%d')}.csv",
-                mime='text/csv',
-                help="Download currently filtered venues"
-            )
-        
-        with col2:
-            # Download England/Scotland venues
-            if not england_venues.empty:
-                england_csv = england_venues.to_csv(index=False)
-                st.download_button(
-                    label="📥 England/Scotland Venues",
-                    data=england_csv,
-                    file_name="englandscotland_csv.csv",
-                    mime='text/csv',
-                    help="Download to replace englandscotland_csv.csv in repo"
-                )
-        
-        with col3:
-            # Download France venues
-            if not france_venues.empty:
-                france_csv = france_venues.to_csv(index=False)
-                st.download_button(
-                    label="📥 France Venues",
-                    data=france_csv,
-                    file_name="france_csv.csv",
-                    mime='text/csv',
-                    help="Download to replace france_csv.csv in repo"
-                )
+        # Create download buttons for each country's venues
+        if venue_files_info and not all_venues.empty:
+            st.markdown("**Download by Country/Region:**")
+            
+            # Create columns based on number of countries (max 3 per row)
+            countries = sorted(venue_files_info.keys())
+            num_cols = min(3, len(countries))
+            
+            for i in range(0, len(countries), num_cols):
+                cols = st.columns(num_cols)
+                for j, country in enumerate(countries[i:i+num_cols]):
+                    with cols[j]:
+                        # Filter venues for this country
+                        country_venues = all_venues[all_venues['Country'] == country]
+                        if not country_venues.empty:
+                            country_csv = country_venues.to_csv(index=False)
+                            # Generate filename from country name (sanitize for filesystem)
+                            # Remove all non-alphanumeric characters except underscores
+                            safe_name = re.sub(r'[^a-z0-9_]', '', country.lower().replace(' ', ''))
+                            filename = f"{safe_name}_csv.csv"
+                            st.download_button(
+                                label=f"📥 {country}",
+                                data=country_csv,
+                                file_name=filename,
+                                mime='text/csv',
+                                help=f"Download {country} venues",
+                                key=f"download_{country.replace(' ', '_').replace('/', '_')}"
+                            )
         
         st.info(
             "💡 **Tip:** To permanently update venue data:\n"

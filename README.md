@@ -2,14 +2,21 @@
 
 A comprehensive Streamlit dashboard for managing all aspects of wedding planning, including venue comparison, guest management, and seating arrangements.
 
+## ✨ What's New
+
+### Automatic Venue File Detection
+The dashboard now automatically detects and loads all venue CSV files in the repository! Simply add a new `{country}_csv.csv` file to the repository root, and it will be immediately available in the dashboard without any code changes. Currently supporting venues in **England, Scotland, United States, and France** with 62 total venues across all locations.
+
 ## Features
 
 ### 1. 📊 Venue Comparison
-- **Interactive venue analysis** across England, Scotland, and France
+- **Interactive venue analysis** across multiple countries (auto-detected from CSV files)
+- **Automatic country detection** from filenames - supports unlimited countries/regions
 - **Price vs Capacity scatter plots** to find the best value venues
 - **Cost calculator** for estimating total venue costs based on guest count
 - **Filtering options** by country, capacity, and price range
 - **Detailed venue information table** with all key attributes
+- **Dynamic download options** for each country's venue data
 
 ### 2. 👥 Guest Management
 - **Complete guest list tracking** for multiple events:
@@ -62,12 +69,30 @@ A comprehensive Streamlit dashboard for managing all aspects of wedding planning
 
 The dashboard supports both CSV and Excel file formats and provides flexible data management options.
 
-### Default Data Files
+### Automatic Venue File Detection
 
-The dashboard automatically loads data from these CSV files in the repository:
+🎉 **New Feature**: The dashboard now automatically detects and loads all venue CSV files in the repository!
+
+Simply add any venue CSV file with the naming pattern `*_csv.csv` to the repository root, and it will be automatically:
+- **Detected** at dashboard startup
+- **Loaded** and integrated into the venue dataset
+- **Classified** by country/region based on the filename
+- **Available** in all venue filters, charts, and analysis
+
+**Currently detected files:**
 - `wedding_roster_csv.csv` - Guest list with event attendance
 - `englandscotland_csv.csv` - Venue information for England and Scotland
+- `englandmore_csv.csv` - Additional England venues
 - `france_csv.csv` - Venue information for France
+- `unitedstates_csv.csv` - United States venues
+
+**Filename to Country Mapping:**
+- Files containing `unitedstates`, `usa`, or `us` → "United States"
+- Files containing `englandscotland` → "England/Scotland"
+- Files containing `england` or `englandmore` → "England"
+- Files containing `scotland` → "Scotland"
+- Files containing `france` → "France"
+- Other files → Title case of filename (e.g., `italy_csv.csv` → "Italy")
 
 ### Uploading Custom CSV Files
 
@@ -76,10 +101,10 @@ You can upload your own CSV files through the dashboard:
 1. **Click the "Upload CSV Files" section in the sidebar**
 2. **Upload files for:**
    - Guest List CSV
-   - England/Scotland Venues CSV
-   - France Venues CSV
+   - Venue CSV Files (supports multiple files)
 3. **Uploaded files are stored temporarily** during your session
 4. **Click "Reset to Default Files"** to revert to the repository CSV files
+5. **View detected files** in the sidebar showing filename and venue count per country
 
 ### Updating Repository Data
 
@@ -182,18 +207,35 @@ If using Excel files, the dashboard expects:
 
 ## Customization
 
+### Adding New Venue Locations
+
+**To add a new country/region:**
+
+1. **Create a CSV file** following the venue format (see Data Structure below)
+2. **Name it with pattern** `{country}_csv.csv` (e.g., `italy_csv.csv`, `spain_csv.csv`)
+3. **Place it in the repository root** directory
+4. **Restart the dashboard** - the file will be automatically detected and loaded!
+
+No code changes required! The dashboard will:
+- Auto-detect the new file
+- Infer the country name from the filename
+- Add it to the country filter dropdown
+- Include it in all venue analysis and charts
+
 ### Using Your Own Data
 
 1. **Prepare your CSV files** following the format described in Data Structure
 2. **Option A - Upload via Dashboard:**
    - Use the "Upload CSV Files" section in the sidebar
-   - Upload your guest list and venue CSVs
+   - Upload your guest list and venue CSVs (supports multiple venue files)
    - Changes are temporary (session only)
+   - View detected files with venue counts in the sidebar
 
 3. **Option B - Replace Repository Files:**
-   - Replace `wedding_roster_csv.csv` with your guest list
-   - Replace `englandscotland_csv.csv` and/or `france_csv.csv` with your venues
+   - For guest list: Replace `wedding_roster_csv.csv`
+   - For venues: Add or replace any `*_csv.csv` files in the repository root
    - Changes are permanent for all users
+   - All venue files are automatically detected and loaded
 
 ### Modifying Price Estimates
 The venue prices are currently estimated. To use real prices:
