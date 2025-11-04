@@ -182,13 +182,165 @@ def load_wedding_data(guest_file=None, england_scotland_file=None, france_file=N
         elif 'Reception Capacity' not in all_venues.columns:
             all_venues['Reception Capacity'] = None
         
-        # Add estimated price ranges if not present
+        # Parse pricing data from CSV columns if structured columns don't exist
         if 'Base Price (£)' not in all_venues.columns or 'Price per Guest (£)' not in all_venues.columns:
-            np.random.seed(42)
+            def parse_venue_pricing(row):
+                """Extract base price and per-guest pricing from venue data.
+                
+                This function parses pricing information from the CSV columns:
+                - For England/Scotland: 'Published Venue Hire / Package (GBP)' and 'Per_Head/Menu From (GBP)'
+                - For France: 'Published Pricing'
+                
+                Returns tuple: (base_price, per_guest_price)
+                """
+                base_price = None
+                per_guest = None
+                
+                # Try to extract per-guest pricing from dedicated Per_Head column FIRST
+                # This takes priority over parsing from the venue hire column
+                if 'Per_Head/Menu From (GBP)' in row.index and pd.notna(row.get('Per_Head/Menu From (GBP)')):
+                    per_head_text = str(row['Per_Head/Menu From (GBP)'])
+                    # Look for "From" pricing first - this is usually the starting/minimum price
+                    from_match = re.search(r'(?:From|from)\s*£?\s*(\d{1,3}(?:,\d{3})*|\d+)', per_head_text)
+                    if from_match:
+                        from_price = int(from_match.group(1).replace(',', ''))
+                        if 50 <= from_price <= 1000:
+                            per_guest = from_price
+                    
+                    # If no "From" pricing found, extract all amounts
+                    if per_guest is None:
+                        amounts = re.findall(r'£?\s*(\d{1,3}(?:,\d{3})*|\d+)', per_head_text)
+                        if amounts:
+                            # Clean and convert to numbers
+                            clean_amounts = [int(amt.replace(',', '')) for amt in amounts]
+                            # Filter for reasonable per-person amounts (£50-£1000)
+                            per_person_amounts = [amt for amt in clean_amounts if 50 <= amt <= 1000]
+                            if per_person_amounts:
+                                per_guest = min(per_person_amounts)
+                
+                # Try to extract from England/Scotland Published Venue Hire column
+                if 'Published Venue Hire / Package (GBP)' in row.index and pd.notna(row.get('Published Venue Hire / Package (GBP)')):
+                    venue_hire_text = str(row['Published Venue Hire / Package (GBP)'])
+                    
+                    # Only extract per-person pricing from here if we didn't get it from Per_Head column
+                    if per_guest is None:
+                        # Find explicit per-person pricing in this field (marked with "pp")
+                        pp_match = re.findall(r'£?\s*(\d{1,3}(?:,\d{3})+|\d+)\s*(?:pp|per\s*person|per\s*head)', venue_hire_text, re.IGNORECASE)
+                        if pp_match:
+                            clean_pp = [int(amt.replace(',', '')) for amt in pp_match]
+                            # Filter for reasonable per-person amounts
+                            per_person_pp = [amt for amt in clean_pp if 50 <= amt <= 1000]
+                            if per_person_pp:
+                                per_guest = min(per_person_pp)
+                    
+                    # Extract base venue hire (larger amounts, not marked as "pp")
+                    # Split by "packages" to separate venue hire from per-person packages
+                    hire_portion = re.split(r'\s*;\s*packages', venue_hire_text, flags=re.IGNORECASE)[0]
+                    
+                    # Look for currency amounts in the hire portion (typically 4-5 digits for venue hire)
+                    amounts = re.findall(r'£?\s*(\d{1,3}(?:,\d{3})+)', hire_portion.replace('У', '-'))
+                    if amounts:
+                        # Clean and convert to numbers
+                        clean_amounts = [int(amt.replace(',', '')) for amt in amounts]
+                        # Filter for amounts likely to be venue hire (> £1000)
+                        venue_hire_amounts = [amt for amt in clean_amounts if amt >= 1000]
+                        if venue_hire_amounts:
+                            base_price = min(venue_hire_amounts)
+                
+                # Try to extract from France format
+                if 'Published Pricing' in row.index and pd.notna(row.get('Published Pricing')):
+                    pricing_text = str(row['Published Pricing'])
+                    # Look for Euro amounts and convert to GBP (approximate 1 EUR = 0.85 GBP as of 2025)
+                    euro_amounts = re.findall(r'€\s*(\d{1,3}(?:,\d{3})+|\d+)', pricing_text)
+                    if euro_amounts:
+                        clean_amounts = [int(amt.replace(',', '')) for amt in euro_amounts]
+                        # Convert EUR to GBP (0.85 conversion rate)
+                        if base_price is None and clean_amounts:
+                            base_price = int(min(clean_amounts) * 0.85)
+                    
+                    # Also check for per person pricing in euros
+                    # Match patterns like "€125–€180 pp" or "Menu €125"
+                    per_person_match = re.search(r'(?:Menu|pp)\s*€?\s*(\d{1,3})', pricing_text, re.IGNORECASE)
+                    if per_person_match and per_guest is None:
+                        per_guest = int(int(per_person_match.group(1)) * 0.85)
+                
+                # Apply venue-specific documented pricing where available (2025 rates from web research)
+                # These override parsed values when web research indicates more accurate current pricing
+                venue_name = str(row.get('Venue', '')).lower()
+                
+                # Research-based pricing adjustments for key venues (2025 data)
+                if 'ashridge house' in venue_name:
+                    # Web research 2025: £20,000-£35,000 packages, ~£224 per person
+                    if base_price is None or base_price < 15000:
+                        base_price = 20000  # Starting from £20,000 for 2025
+                    # Keep parsed £229 per guest as it matches research
+                        
+                elif 'cliveden house' in venue_name:
+                    # Web research 2025: Exclusive use £36,000-£72,000, packages £330-£510 pp
+                    if base_price is None:
+                        base_price = 45600  # Midweek exclusive use starts ~£45,600
+                    # Override low private dining price with package pricing
+                    if per_guest is not None and per_guest < 200:
+                        per_guest = 330  # Package prices from £330 per person (2025 research)
+                        
+                elif 'château de berne' in venue_name or 'chateau de berne' in venue_name:
+                    # Web research 2025: €4,800 venue hire, €150-€350 per person
+                    if base_price is None:
+                        base_price = int(4800 * 0.85)  # €4,800 = ~£4,080
+                    if per_guest is None:
+                        per_guest = int(150 * 0.85)  # From €150 per person = ~£128
+                
+                # Default estimates based on venue style and capacity for missing data
+                # Only use estimates when no pricing data is available at all
+                if base_price is None or per_guest is None:
+                    country = str(row.get('Country', '')).lower()
+                    seated_capacity = row.get('Seated Capacity', 150)
+                    
+                    # Realistic baseline estimates by country and capacity tier (2025 UK wedding market)
+                    if country == 'england' or country == 'scotland':
+                        if seated_capacity and seated_capacity >= 200:
+                            if base_price is None:
+                                base_price = 35000  # Larger stately homes/castles
+                            if per_guest is None:
+                                per_guest = 180
+                        elif seated_capacity and seated_capacity >= 100:
+                            if base_price is None:
+                                base_price = 18000  # Mid-tier country houses
+                            if per_guest is None:
+                                per_guest = 160
+                        else:
+                            if base_price is None:
+                                base_price = 12000  # Smaller intimate venues
+                            if per_guest is None:
+                                per_guest = 140
+                    elif country == 'france':
+                        # French châteaux pricing in GBP equivalent
+                        if seated_capacity and seated_capacity >= 150:
+                            if base_price is None:
+                                base_price = 25000
+                            if per_guest is None:
+                                per_guest = 150
+                        else:
+                            if base_price is None:
+                                base_price = 15000
+                            if per_guest is None:
+                                per_guest = 130
+                    else:
+                        # Generic fallback
+                        if base_price is None:
+                            base_price = 20000
+                        if per_guest is None:
+                            per_guest = 150
+                
+                return base_price, per_guest
+            
+            # Apply pricing extraction to all venues
+            pricing_data = all_venues.apply(parse_venue_pricing, axis=1)
+            
             if 'Base Price (£)' not in all_venues.columns:
-                all_venues['Base Price (£)'] = np.random.uniform(15000, 85000, len(all_venues))
+                all_venues['Base Price (£)'] = pricing_data.apply(lambda x: x[0])
             if 'Price per Guest (£)' not in all_venues.columns:
-                all_venues['Price per Guest (£)'] = np.random.uniform(150, 450, len(all_venues))
+                all_venues['Price per Guest (£)'] = pricing_data.apply(lambda x: x[1])
     
     # Process master list
     if not master_list.empty and all(col in master_list.columns for col in ['Engagement Party', 'Maryland Celebration', 'Wedding']):
