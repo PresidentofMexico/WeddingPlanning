@@ -76,6 +76,33 @@ The dashboard automatically detects and loads all venue CSV files in the reposit
 
 ## Currency Conversion & Exchange Rates
 
+### Ensuring Complete URL Coverage
+
+All venues must have at least one URL (Website or Pricing Source URL) for users to access venue information. The repository includes a URL completion script that:
+
+1. **Checks for missing URLs** in both "Website" and "Pricing Source URL(s)" columns
+2. **Fills gaps** by copying URLs from one column to another when one is missing
+3. **Adds missing columns** if they don't exist in a CSV file
+4. **Reports statistics** on changes made
+
+**To ensure all venues have URLs:**
+
+```bash
+python fill_missing_urls.py
+```
+
+**What it does:**
+- Processes all venue CSV files (`englandmore_csv.csv`, `englandscotland_csv.csv`, `france_csv.csv`, `unitedstates_csv.csv`)
+- If a venue has a "Website" but no "Pricing Source URL(s)", copies the Website to Pricing Source URL(s)
+- If a venue has a "Pricing Source URL(s)" but no "Website", copies the Pricing Source URL(s) to Website
+- Adds "Pricing Source URL(s)" column to files that don't have it (e.g., France venues)
+- Reports which venues were updated and overall statistics
+
+**When to run the script:**
+- After adding new venues that may have incomplete URL data
+- When standardizing venue data across different CSV files
+- Before deploying updates to ensure complete venue information
+
 ### Converting Venue Prices to USD
 
 All venue prices are displayed in USD for easy comparison across different countries. The repository includes a currency conversion script that:
