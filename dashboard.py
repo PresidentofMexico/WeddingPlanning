@@ -8,6 +8,7 @@ import json
 import random
 import re
 import os
+import html
 from datetime import datetime
 
 # Configure page
@@ -207,6 +208,27 @@ def clean_guest_list(df):
     
     return cleaned_df
 
+def create_venue_link(venue_name, pricing_url):
+    """
+    Create a clickable HTML link for a venue name.
+    
+    Args:
+        venue_name: Name of the venue
+        pricing_url: URL to the venue's pricing source
+        
+    Returns:
+        str: HTML formatted link or plain text if no URL
+    """
+    if pd.notna(pricing_url) and pricing_url and str(pricing_url).strip():
+        # Clean and sanitize the URL and venue name to prevent XSS
+        url = html.escape(str(pricing_url).strip())
+        safe_name = html.escape(str(venue_name))
+        # Return HTML link that opens in new tab
+        return f'<a href="{url}" target="_blank" rel="noopener noreferrer">{safe_name}</a>'
+    else:
+        # No URL available, return plain text (escaped)
+        return html.escape(str(venue_name))
+
 @st.cache_data
 def load_wedding_data(guest_file=None, uploaded_venue_files=None):
     """
@@ -297,12 +319,36 @@ def load_wedding_data(guest_file=None, uploaded_venue_files=None):
             all_venues['Reception Capacity'] = None
         
         # Add estimated price ranges if not present
-        if 'Base Price (£)' not in all_venues.columns or 'Price per Guest (£)' not in all_venues.columns:
+        # Prefer USD columns if available, fallback to original currency
+        if 'Base Price (USD)' in all_venues.columns:
+            # USD columns already exist, ensure they're used
+            pass
+        elif 'Base Price (£)' in all_venues.columns:
+            # Legacy GBP columns - convert to USD
+            all_venues['Base Price (USD)'] = all_venues['Base Price (£)'] * 1.27
+        elif 'Base Price (€)' in all_venues.columns:
+            # Legacy EUR columns - convert to USD  
+            all_venues['Base Price (USD)'] = all_venues['Base Price (€)'] * 1.09
+        elif 'Base Price ($)' in all_venues.columns:
+            # Already in USD, just rename
+            all_venues['Base Price (USD)'] = all_venues['Base Price ($)']
+        else:
+            # Generate estimates in USD
             np.random.seed(42)
-            if 'Base Price (£)' not in all_venues.columns:
-                all_venues['Base Price (£)'] = np.random.uniform(15000, 85000, len(all_venues))
-            if 'Price per Guest (£)' not in all_venues.columns:
-                all_venues['Price per Guest (£)'] = np.random.uniform(150, 450, len(all_venues))
+            all_venues['Base Price (USD)'] = np.random.uniform(19000, 108000, len(all_venues))
+        
+        # Same for per-guest pricing
+        if 'Price per Guest (USD)' in all_venues.columns:
+            pass
+        elif 'Price per Guest (£)' in all_venues.columns:
+            all_venues['Price per Guest (USD)'] = all_venues['Price per Guest (£)'] * 1.27
+        elif 'Price per Guest (€)' in all_venues.columns:
+            all_venues['Price per Guest (USD)'] = all_venues['Price per Guest (€)'] * 1.09
+        elif 'Price per Guest ($)' in all_venues.columns:
+            all_venues['Price per Guest (USD)'] = all_venues['Price per Guest ($)']
+        else:
+            np.random.seed(42)
+            all_venues['Price per Guest (USD)'] = np.random.uniform(190, 570, len(all_venues))
     
     # Process master list
     if not master_list.empty and all(col in master_list.columns for col in ['Engagement Party', 'Maryland Celebration', 'Wedding']):
@@ -466,10 +512,10 @@ with st.sidebar:
     )
     
     price_range = st.slider(
-        "Base Price Range (£)",
+        "Base Price Range ($)",
         min_value=0,
-        max_value=100000,
-        value=(10000, 80000),
+        max_value=130000,
+        value=(13000, 100000),
         step=5000
     )
 
@@ -504,9 +550,9 @@ with tab1:
                 (filtered_venues['Seated Capacity'].isna())
             ]
         
-        if 'Base Price (£)' in filtered_venues.columns:
+        if 'Base Price (USD)' in filtered_venues.columns:
             filtered_venues = filtered_venues[
-                filtered_venues['Base Price (£)'].between(price_range[0], price_range[1])
+                filtered_venues['Base Price (USD)'].between(price_range[0], price_range[1])
             ]
         
         col1, col2, col3 = st.columns(3)
@@ -514,9 +560,9 @@ with tab1:
         with col1:
             st.metric("Total Venues", len(filtered_venues))
         with col2:
-            if 'Base Price (£)' in filtered_venues.columns:
-                avg_price = filtered_venues['Base Price (£)'].mean()
-                st.metric("Average Base Price", f"£{avg_price:,.0f}" if not pd.isna(avg_price) else "N/A")
+            if 'Base Price (USD)' in filtered_venues.columns:
+                avg_price = filtered_venues['Base Price (USD)'].mean()
+                st.metric("Average Base Price", f"${avg_price:,.0f}" if not pd.isna(avg_price) else "N/A")
             else:
                 st.metric("Average Base Price", "N/A")
         with col3:
@@ -533,46 +579,46 @@ with tab1:
         
         with col1:
             # Price vs Capacity scatter plot
-            if not filtered_venues.empty and 'Seated Capacity' in filtered_venues.columns and 'Base Price (£)' in filtered_venues.columns:
+            if not filtered_venues.empty and 'Seated Capacity' in filtered_venues.columns and 'Base Price (USD)' in filtered_venues.columns:
                 hover_cols = ['Venue', 'Style', 'Exclusive Use?']
                 hover_data = {col: True for col in hover_cols if col in filtered_venues.columns}
                 
                 fig_scatter = px.scatter(
                     filtered_venues,
                     x='Seated Capacity',
-                    y='Base Price (£)',
+                    y='Base Price (USD)',
                     color='Country',
-                    size='Price per Guest (£)' if 'Price per Guest (£)' in filtered_venues.columns else None,
+                    size='Price per Guest (USD)' if 'Price per Guest (USD)' in filtered_venues.columns else None,
                     hover_data=hover_data,
                     title='Price vs Capacity Analysis',
-                    labels={'Base Price (£)': 'Base Price (£)', 'Seated Capacity': 'Seated Capacity'}
+                    labels={'Base Price (USD)': 'Base Price (USD)', 'Seated Capacity': 'Seated Capacity'}
                 )
                 fig_scatter.update_layout(height=400)
                 st.plotly_chart(fig_scatter, use_container_width=True)
             else:
-                st.info("Add 'Seated Capacity' and 'Base Price (£)' columns to your data for price vs capacity analysis.")
+                st.info("Add 'Seated Capacity' and 'Base Price (USD)' columns to your data for price vs capacity analysis.")
         
         with col2:
             # Price distribution by country
-            if not filtered_venues.empty and 'Base Price (£)' in filtered_venues.columns:
+            if not filtered_venues.empty and 'Base Price (USD)' in filtered_venues.columns:
                 fig_box = px.box(
                     filtered_venues,
                     x='Country',
-                    y='Base Price (£)',
+                    y='Base Price (USD)',
                     color='Country',
                     title='Price Distribution by Country'
                 )
                 fig_box.update_layout(height=400, showlegend=False)
                 st.plotly_chart(fig_box, use_container_width=True)
             else:
-                st.info("Add 'Base Price (£)' column to your data for price distribution analysis.")
+                st.info("Add 'Base Price (USD)' column to your data for price distribution analysis.")
         
         # Detailed venue table
         st.subheader("Detailed Venue Information")
         
         # Prepare display columns
         display_cols = ['Venue', 'Country', 'Style', 'Seated Capacity', 
-                       'Base Price (£)', 'Price per Guest (£)', 'Exclusive Use?', 
+                       'Base Price (USD)', 'Price per Guest (USD)', 'Exclusive Use?', 
                        'Bedrooms Onsite', 'Nearest Airports']
         
         # Filter to only columns that exist
@@ -580,17 +626,24 @@ with tab1:
         
         venue_display = filtered_venues[display_cols].copy()
         
-        # Format price columns if they exist
-        if 'Base Price (£)' in venue_display.columns:
-            venue_display['Base Price (£)'] = venue_display['Base Price (£)'].apply(lambda x: f"£{x:,.0f}" if pd.notna(x) else "N/A")
-        if 'Price per Guest (£)' in venue_display.columns:
-            venue_display['Price per Guest (£)'] = venue_display['Price per Guest (£)'].apply(lambda x: f"£{x:.0f}" if pd.notna(x) else "N/A")
+        # Add clickable venue links if Pricing Source URL(s) column exists
+        if 'Pricing Source URL(s)' in filtered_venues.columns:
+            # Create clickable links for venue names
+            venue_display['Venue'] = filtered_venues.apply(
+                lambda row: create_venue_link(row['Venue'], row.get('Pricing Source URL(s)', '')),
+                axis=1
+            )
         
-        st.dataframe(
-            venue_display,
-            use_container_width=True,
-            height=400,
-            hide_index=True
+        # Format price columns if they exist
+        if 'Base Price (USD)' in venue_display.columns:
+            venue_display['Base Price (USD)'] = venue_display['Base Price (USD)'].apply(lambda x: f"${x:,.0f}" if pd.notna(x) else "N/A")
+        if 'Price per Guest (USD)' in venue_display.columns:
+            venue_display['Price per Guest (USD)'] = venue_display['Price per Guest (USD)'].apply(lambda x: f"${x:.0f}" if pd.notna(x) else "N/A")
+        
+        # Display with HTML rendering for clickable links
+        st.markdown(
+            venue_display.to_html(escape=False, index=False),
+            unsafe_allow_html=True
         )
         
         # Download venue data
@@ -674,30 +727,30 @@ with tab1:
                 )
             
             # Look up venue data from all_venues (not filtered)
-            if selected_venue and 'Base Price (£)' in all_venues.columns and 'Price per Guest (£)' in all_venues.columns:
+            if selected_venue and 'Base Price (USD)' in all_venues.columns and 'Price per Guest (USD)' in all_venues.columns:
                 venue_matches = all_venues[all_venues['Venue'] == selected_venue]
                 if not venue_matches.empty:
                     venue_data = venue_matches.iloc[0]
-                    base_price = venue_data['Base Price (£)']
-                    per_guest = venue_data['Price per Guest (£)']
+                    base_price = venue_data['Base Price (USD)']
+                    per_guest = venue_data['Price per Guest (USD)']
                     total_cost = base_price + (guest_count * per_guest)
                     
                     with col3:
-                        st.metric("Estimated Total Cost", f"£{total_cost:,.0f}")
+                        st.metric("Estimated Total Cost", f"${total_cost:,.0f}")
                     
                     # Cost breakdown
                     st.markdown("**Cost Breakdown:**")
                     breakdown_df = pd.DataFrame({
                         'Item': ['Base Venue Fee', 'Per Guest Cost', 'Total'],
-                        'Cost': [f"£{base_price:,.0f}", 
-                                f"£{guest_count * per_guest:,.0f} ({guest_count} × £{per_guest:.0f})",
-                                f"£{total_cost:,.0f}"]
+                        'Cost': [f"${base_price:,.0f}", 
+                                f"${guest_count * per_guest:,.0f} ({guest_count} × ${per_guest:.0f})",
+                                f"${total_cost:,.0f}"]
                     })
                     st.table(breakdown_df)
                 else:
                     st.warning("⚠️ Selected venue not found in data.")
             elif selected_venue:
-                st.info("Add 'Base Price (£)' and 'Price per Guest (£)' columns to your venue data for cost calculations.")
+                st.info("Add 'Base Price (USD)' and 'Price per Guest (USD)' columns to your venue data for cost calculations.")
         else:
             st.info("Upload venue data to use the cost calculator.")
 
@@ -1120,19 +1173,19 @@ with tab4:
     st.subheader("🌍 Venue Country Comparison")
     
     if not all_venues.empty and 'Country' in all_venues.columns:
-        required_cols = ['Venue', 'Base Price (£)', 'Seated Capacity', 'Price per Guest (£)']
+        required_cols = ['Venue', 'Base Price (USD)', 'Seated Capacity', 'Price per Guest (USD)']
         available_cols = {col: col for col in required_cols if col in all_venues.columns}
         
         if available_cols:
             agg_dict = {}
             if 'Venue' in available_cols:
                 agg_dict['Venue'] = 'count'
-            if 'Base Price (£)' in available_cols:
-                agg_dict['Base Price (£)'] = ['mean', 'min', 'max']
+            if 'Base Price (USD)' in available_cols:
+                agg_dict['Base Price (USD)'] = ['mean', 'min', 'max']
             if 'Seated Capacity' in available_cols:
                 agg_dict['Seated Capacity'] = 'mean'
-            if 'Price per Guest (£)' in available_cols:
-                agg_dict['Price per Guest (£)'] = 'mean'
+            if 'Price per Guest (USD)' in available_cols:
+                agg_dict['Price per Guest (USD)'] = 'mean'
             
             country_stats = all_venues.groupby('Country').agg(agg_dict).round(0)
             
@@ -1152,7 +1205,7 @@ with tab4:
     st.markdown("---")
     st.subheader("💰 Budget Scenarios")
     
-    if not all_venues.empty and 'Country' in all_venues.columns and 'Base Price (£)' in all_venues.columns and 'Price per Guest (£)' in all_venues.columns:
+    if not all_venues.empty and 'Country' in all_venues.columns and 'Base Price (USD)' in all_venues.columns and 'Price per Guest (USD)' in all_venues.columns:
         col1, col2 = st.columns(2)
         
         with col1:
@@ -1173,9 +1226,9 @@ with tab4:
                 country_venues = all_venues[all_venues['Country'] == country]
                 
                 if not country_venues.empty:
-                    min_cost = country_venues['Base Price (£)'].min() + (scenario_guests * country_venues['Price per Guest (£)'].min())
-                    avg_cost = country_venues['Base Price (£)'].mean() + (scenario_guests * country_venues['Price per Guest (£)'].mean())
-                    max_cost = country_venues['Base Price (£)'].max() + (scenario_guests * country_venues['Price per Guest (£)'].max())
+                    min_cost = country_venues['Base Price (USD)'].min() + (scenario_guests * country_venues['Price per Guest (USD)'].min())
+                    avg_cost = country_venues['Base Price (USD)'].mean() + (scenario_guests * country_venues['Price per Guest (USD)'].mean())
+                    max_cost = country_venues['Base Price (USD)'].max() + (scenario_guests * country_venues['Price per Guest (USD)'].max())
                     
                     scenario_data.append({
                         'Country': country,
@@ -1192,7 +1245,7 @@ with tab4:
                     x='Country',
                     y=['Minimum', 'Average', 'Maximum'],
                     title=f'Cost Scenarios for {scenario_guests} Guests',
-                    labels={'value': 'Estimated Cost (£)', 'variable': 'Scenario'},
+                    labels={'value': 'Estimated Cost (USD)', 'variable': 'Scenario'},
                     barmode='group'
                 )
                 fig_scenario.update_layout(height=400)
